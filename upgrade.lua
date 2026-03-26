@@ -11,10 +11,10 @@ end
 local remotes = Batata.Util.EnsureRemotes()
 local upgradeDb = Batata.Util.EnsureUpgradeDb()
 
-local BUY_DELAY = 0.02
-local LOOP_DELAY = 0.08
-local RETRY_ONLY_PROBE_DELAY = 0.18
-local MAX_PURCHASES_PER_PASS = 12
+local BUY_DELAY = 0.008
+local LOOP_DELAY = 0.025
+local RETRY_ONLY_PROBE_DELAY = 0.08
+local MAX_PURCHASES_PER_PASS = 30
 
 local Module = {
     Running = true,
