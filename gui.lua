@@ -282,6 +282,9 @@ local function buildLocalConfig()
         Prestige = {
             TargetValue = prestigeState and prestigeState.TargetValue or 0,
         },
+        Ascension = {
+            Blessing = getModuleState(moduleByKey.Ascension) and getModuleState(moduleByKey.Ascension).Blessing or "abundance",
+        },
         Potion = {
             SelectedPotions = cloneBooleanMap(potionState and potionState.SelectedPotions or nil),
         },
@@ -340,6 +343,13 @@ local function applySavedRuntimeConfig(config)
         local ok, controller = ensurePrestigeController()
         if ok and type(controller) == "table" and type(controller.SetTargetValue) == "function" then
             controller:SetTargetValue(config.Prestige.TargetValue)
+        end
+    end
+
+    if type(config.Ascension) == "table" then
+        local ok, controller = ensureAscensionController()
+        if ok and type(controller) == "table" and type(controller.SetBlessing) == "function" then
+            controller:SetBlessing(config.Ascension.Blessing)
         end
     end
 
@@ -1084,8 +1094,8 @@ createModulePage(sellPage, moduleByKey.Sell, "Vende comum e dourada de forma ind
 createModulePage(fusionPage, moduleByKey.Fusion, "Funde com foco em seguranca e mantendo 1 no inventario.")
 createModulePage(shopPage, moduleByKey.Shop, "Compra itens de cada rotacao, menos rock.")
 createModulePage(digPage, moduleByKey.Dig, "Escava quando a stamina atual estiver em 5 ou mais.")
-createModulePage(prestigePage, moduleByKey.Prestige, "Equipa glitter_potato, prestigia e volta para the_first_potato.")
-createModulePage(ascensionPage, moduleByKey.Ascension, "Usa abundance quando os PP atuais batem o custo.")
+createModulePage(prestigePage, moduleByKey.Prestige, "Equipa solar_flare_potato, prestigia e volta para the_first_potato.")
+createModulePage(ascensionPage, moduleByKey.Ascension, "Usa a blessing escolhida quando os PP atuais batem o custo.")
 createModulePage(potionPage, moduleByKey.Potion, "Renova click, golden, luck, drop chance e production.")
 createModulePage(geneticsPage, moduleByKey.Genetics, "Rola o slot escolhido com filtros configurados.")
 
@@ -1138,11 +1148,37 @@ createInfoLabel(prestigeStatsPanel, 290, 38, 250, 20, "PrestigePointsSession", "
 createInfoLabel(prestigeStatsPanel, 14, 92, 250, 20, "PrestigeLastClock", "Horario do ultimo prestigio")
 createInfoLabel(prestigeStatsPanel, 290, 92, 250, 20, "PrestigeWait", "Tempo para nova tentativa")
 
-local ascensionStatsPanel = createPanel(ascensionPage, 12, 256, 562, 168, "Sessao")
-createInfoLabel(ascensionStatsPanel, 14, 38, 250, 20, "AscensionCount", "Ascensoes desde o inicio")
-createInfoLabel(ascensionStatsPanel, 290, 38, 250, 20, "AscensionLastClock", "Horario da ultima ascensao")
-createInfoLabel(ascensionStatsPanel, 14, 92, 250, 20, "AscensionPP", "PP atual")
-createInfoLabel(ascensionStatsPanel, 290, 92, 250, 20, "AscensionWait", "Tempo para nova tentativa")
+local ascensionBlessingPanel = createPanel(ascensionPage, 12, 256, 562, 76, "Blessing")
+local ascensionBlessingHint = Instance.new("TextLabel")
+ascensionBlessingHint.BackgroundTransparency = 1
+ascensionBlessingHint.Position = UDim2.new(0, 14, 0, 36)
+ascensionBlessingHint.Size = UDim2.new(0, 220, 0, 14)
+ascensionBlessingHint.Text = "Cada PC pode usar uma blessing diferente."
+ascensionBlessingHint.Font = Enum.Font.Gotham
+ascensionBlessingHint.TextSize = 10
+ascensionBlessingHint.TextColor3 = Color3.fromRGB(138, 149, 177)
+ascensionBlessingHint.TextXAlignment = Enum.TextXAlignment.Left
+ascensionBlessingHint.Parent = ascensionBlessingPanel
+
+local ascensionBlessingOptions = {
+    { Id = "golden", Label = "Golden" },
+    { Id = "prestige", Label = "Prestige" },
+    { Id = "thrifty", Label = "Thrifty" },
+    { Id = "collector", Label = "Collector" },
+    { Id = "abundance", Label = "Abundance" },
+}
+
+for index, blessingInfo in ipairs(ascensionBlessingOptions) do
+    local button = createChoiceButton(ascensionBlessingPanel, 14 + ((index - 1) * 108), 50, 98, 18, blessingInfo.Label)
+    button.TextSize = 10
+    pickerButtons["ascension_" .. blessingInfo.Id] = button
+end
+
+local ascensionStatsPanel = createPanel(ascensionPage, 12, 344, 562, 80, "Sessao")
+createInfoLabel(ascensionStatsPanel, 14, 34, 250, 16, "AscensionCount", "Ascensoes desde o inicio")
+createInfoLabel(ascensionStatsPanel, 290, 34, 250, 16, "AscensionLastClock", "Horario da ultima ascensao")
+createInfoLabel(ascensionStatsPanel, 14, 56, 250, 16, "AscensionPP", "PP atual")
+createInfoLabel(ascensionStatsPanel, 290, 56, 250, 16, "AscensionWait", "Tempo para nova tentativa")
 
 local geneticsScroll = Instance.new("ScrollingFrame")
 geneticsScroll.BackgroundTransparency = 1
@@ -1579,14 +1615,22 @@ local function refreshGui()
 
     local ascensionState = getModuleState(moduleByKey.Ascension)
     infoLabels.AscensionExtra.Text = string.format(
-        "PP %s | Custo %s",
+        "PP %s | Custo %s | Blessing %s",
         formatNumber(stats and stats.PrestigePoints or 0),
-        formatNumber(stats and stats.AscensionCost or 0)
+        formatNumber(stats and stats.AscensionCost or 0),
+        tostring(ascensionState and ascensionState.Blessing or "abundance")
     )
     infoLabels.AscensionCount.Text = tostring(ascensionState and ascensionState.SessionAscensions or 0)
     infoLabels.AscensionLastClock.Text = tostring(ascensionState and ascensionState.LastAscensionClock or "--:--:--")
     infoLabels.AscensionPP.Text = formatNumber(stats and stats.PrestigePoints or 0)
     infoLabels.AscensionWait.Text = tostring(math.floor(tonumber(ascensionState and ascensionState.SecondsUntilNextTry or 0))) .. "s"
+
+    for _, blessingInfo in ipairs(ascensionBlessingOptions) do
+        local button = pickerButtons["ascension_" .. blessingInfo.Id]
+        if button then
+            setChoiceButtonState(button, ascensionState and ascensionState.Blessing == blessingInfo.Id)
+        end
+    end
 
     local potionState = getModuleState(moduleByKey.Potion)
     if potionState and type(potionState.Buffs) == "table" then
@@ -1766,6 +1810,20 @@ for _, effectInfo in ipairs(effectOptions) do
                 local state = controller:GetState()
                 local enabled = state.SelectedEffects and state.SelectedEffects[effectInfo.Id] == true
                 controller:SetEffectEnabled(effectInfo.Id, not enabled)
+            end
+        end)
+    end
+end
+
+for _, blessingInfo in ipairs(ascensionBlessingOptions) do
+    local button = pickerButtons["ascension_" .. blessingInfo.Id]
+    if button then
+        bind(button.MouseButton1Click, function()
+            local ok, controller = ensureAscensionController()
+            if ok and type(controller.SetBlessing) == "function" then
+                controller:SetBlessing(blessingInfo.Id)
+                saveLocalConfig()
+                refreshGui()
             end
         end)
     end
