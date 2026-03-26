@@ -135,6 +135,49 @@ local function isConnectionActive(connection)
     return connected ~= false
 end
 
+local function unpackValues(values)
+    if table.unpack then
+        return table.unpack(values, 1, values.n or #values)
+    end
+
+    return unpack(values, 1, values.n or #values)
+end
+
+local function extractNumberFromResponse(response, keyCandidates, visited)
+    local numberValue = tonumber(response)
+    if numberValue ~= nil then
+        return numberValue
+    end
+
+    if type(response) ~= "table" then
+        return nil
+    end
+
+    visited = visited or {}
+    if visited[response] == true then
+        return nil
+    end
+    visited[response] = true
+
+    if type(keyCandidates) == "table" then
+        for _, key in ipairs(keyCandidates) do
+            local directValue = tonumber(response[key])
+            if directValue ~= nil then
+                return directValue
+            end
+        end
+    end
+
+    for _, nestedValue in pairs(response) do
+        local nestedNumber = extractNumberFromResponse(nestedValue, keyCandidates, visited)
+        if nestedNumber ~= nil then
+            return nestedNumber
+        end
+    end
+
+    return nil
+end
+
 function Batata.Util.LoadFile(path)
     local rawPath = normalizePath(path)
     local baseUrl = tostring(Batata.SourceBaseUrl or "")
@@ -203,6 +246,34 @@ function Batata.Util.LoadFile(path)
     end
 
     error("nao foi possivel carregar arquivo: " .. rawPath)
+end
+
+function Batata.Util.TryInvokeRemote(remoteName, ...)
+    local remotes = Batata.Util.EnsureRemotes()
+    local remote = remotes and remotes:Get(remoteName)
+    if remote == nil then
+        return false, nil
+    end
+
+    local args = table.pack(...)
+    local ok, result = pcall(function()
+        return remote:InvokeServer(unpackValues(args))
+    end)
+
+    if not ok then
+        return false, nil
+    end
+
+    return true, result
+end
+
+function Batata.Util.TryGetRemoteNumber(remoteName, keyCandidates, ...)
+    local ok, result = Batata.Util.TryInvokeRemote(remoteName, ...)
+    if not ok then
+        return nil
+    end
+
+    return extractNumberFromResponse(result, keyCandidates)
 end
 
 function Batata.Util.EnsureShared()
