@@ -230,6 +230,7 @@ end
 local getCurrentProfile
 local getModuleState
 local safeEnsure
+local setStartupModules
 
 local function isTemporarilyDisabled(definition)
     return type(definition) == "table" and definition.TemporarilyDisabled == true
@@ -1364,7 +1365,7 @@ local function setAllModules(enabled)
     scriptPaused = not enabled
 end
 
-local function setStartupModules()
+setStartupModules = function()
     setAllModules(true)
 
     local geneticsDefinition = moduleByKey.Genetics
