@@ -11,10 +11,11 @@ end
 local remotes = Batata.Util.EnsureRemotes()
 local upgradeDb = Batata.Util.EnsureUpgradeDb()
 
-local BUY_DELAY = 0
-local LOOP_DELAY = 0
-local RETRY_ONLY_PROBE_DELAY = 0.02
-local MAX_PURCHASES_PER_PASS = 120
+local BUY_DELAY = 0.01
+local LOOP_DELAY = 0.01
+local RETRY_ONLY_PROBE_DELAY = 0.05
+local MAX_PURCHASES_PER_PASS = 60
+local OPTIMISTIC_LEVEL_TIMEOUT = 1.25
 
 local Module = {
     Running = true,
@@ -68,7 +69,7 @@ local function getEffectiveLevel(levels, upgradeId)
     local touchedAt = tonumber(Module.OptimisticTouchedAt[upgradeId]) or 0
 
     if predictedLevel ~= nil then
-        if predictedLevel <= serverLevel or (os.clock() - touchedAt) >= 5 then
+        if predictedLevel <= serverLevel or (os.clock() - touchedAt) >= OPTIMISTIC_LEVEL_TIMEOUT then
             Module.OptimisticLevels[upgradeId] = nil
             Module.OptimisticTouchedAt[upgradeId] = nil
             predictedLevel = nil
@@ -354,10 +355,9 @@ task.spawn(function()
                 Module.LastStatus = "Remote ausente"
             else
                 local boughtAny = false
-                local workingCash = getCash()
 
                 for _ = 1, MAX_PURCHASES_PER_PASS do
-                    local target = getCurrentTarget(workingCash)
+                    local target = getCurrentTarget(getCash())
                     if not target then
                         if not boughtAny then
                             if getRetryOnlyTarget(getCash()) then
@@ -370,7 +370,7 @@ task.spawn(function()
                     end
 
                     if target.PriorityProbe == true or target.RetryOnly == true then
-                        local cash = workingCash
+                        local cash = getCash()
                         if tonumber(target.Cost) ~= nil and cash < tonumber(target.Cost) then
                             if not boughtAny then
                                 Module.LastStatus = "Aguardando cash"
@@ -394,15 +394,12 @@ task.spawn(function()
                             purchaseRemote:FireServer(target.Id)
                         end)
                         boughtAny = true
-                        if tonumber(target.Cost) ~= nil then
-                            workingCash = math.max(0, workingCash - tonumber(target.Cost))
-                        end
                         markOptimisticPurchase(target.Id, target.Level, target.Max)
                         waitIfNeeded(Module.BuyDelay)
                         break
                     end
 
-                    local cash = workingCash
+                    local cash = getCash()
                     if cash < target.Cost then
                         if not boughtAny then
                             Module.LastStatus = "Aguardando cash"
@@ -416,9 +413,6 @@ task.spawn(function()
                         purchaseRemote:FireServer(target.Id)
                     end)
                     boughtAny = true
-                    if tonumber(target.Cost) ~= nil then
-                        workingCash = math.max(0, workingCash - tonumber(target.Cost))
-                    end
                     markOptimisticPurchase(target.Id, target.Level, target.Max)
                     waitIfNeeded(Module.BuyDelay)
                 end
