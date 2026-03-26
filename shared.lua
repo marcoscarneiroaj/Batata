@@ -42,6 +42,11 @@ Batata.Settings = Batata.Settings or {
     DelayProfile = "medio",
 }
 Batata.SourceBaseUrl = Batata.SourceBaseUrl or nil
+Batata.RemoteSourceCache = Batata.RemoteSourceCache or {}
+Batata.LoadedFileCache = Batata.LoadedFileCache or {}
+Batata.LoadedFileUrls = Batata.LoadedFileUrls or {}
+Batata.BootLog = Batata.BootLog or {}
+Batata.BootErrors = Batata.BootErrors or {}
 
 Batata.DelayProfiles = Batata.DelayProfiles or {
     economico = {
@@ -111,10 +116,66 @@ Batata.DelayProfiles = Batata.DelayProfiles or {
 
 local DEFAULT_DELAY_PROFILE = "medio"
 
-function Batata.Util.LoadFile(path)
-    local candidates = {}
-    local rawPath = tostring(path or "")
+local function normalizePath(path)
+    local text = string.gsub(tostring(path or ""), "\\", "/")
+    text = string.gsub(text, "^%./", "")
+    return text
+end
 
+local function isConnectionActive(connection)
+    if connection == nil then
+        return false
+    end
+
+    local connected = true
+    pcall(function()
+        connected = connection.Connected
+    end)
+
+    return connected ~= false
+end
+
+function Batata.Util.LoadFile(path)
+    local rawPath = normalizePath(path)
+    local baseUrl = tostring(Batata.SourceBaseUrl or "")
+
+    if rawPath == "" then
+        error("caminho de arquivo vazio")
+    end
+
+    if Batata.LoadedFileCache[rawPath] ~= nil then
+        return Batata.LoadedFileCache[rawPath]
+    end
+
+    if baseUrl ~= "" then
+        local normalizedBaseUrl = string.gsub(baseUrl, "\\", "/")
+        if string.sub(normalizedBaseUrl, -1) ~= "/" then
+            normalizedBaseUrl = normalizedBaseUrl .. "/"
+        end
+
+        local httpPath = normalizedBaseUrl .. rawPath
+        local source = Batata.RemoteSourceCache[rawPath]
+
+        if type(source) ~= "string" or source == "" then
+            local ok, response = pcall(function()
+                return game:HttpGet(httpPath, true)
+            end)
+
+            if not ok or type(response) ~= "string" or response == "" then
+                error("nao foi possivel carregar arquivo remoto: " .. httpPath)
+            end
+
+            source = response
+            Batata.RemoteSourceCache[rawPath] = source
+        end
+
+        local result = loadstring(source, "@" .. httpPath)()
+        Batata.LoadedFileCache[rawPath] = result
+        Batata.LoadedFileUrls[rawPath] = httpPath
+        return result
+    end
+
+    local candidates = {}
     if rawPath ~= "" then
         table.insert(candidates, rawPath)
 
@@ -133,26 +194,11 @@ function Batata.Util.LoadFile(path)
 
             local ok, source = pcall(readfile, candidate)
             if ok and type(source) == "string" and source ~= "" then
-                return loadstring(source, "@" .. candidate)()
+                local result = loadstring(source, "@" .. candidate)()
+                Batata.LoadedFileCache[rawPath] = result
+                Batata.LoadedFileUrls[rawPath] = candidate
+                return result
             end
-        end
-    end
-
-    local baseUrl = tostring(Batata.SourceBaseUrl or "")
-    if baseUrl ~= "" then
-        local normalizedBaseUrl = string.gsub(baseUrl, "\\", "/")
-        if string.sub(normalizedBaseUrl, -1) ~= "/" then
-            normalizedBaseUrl = normalizedBaseUrl .. "/"
-        end
-
-        local normalizedPath = string.gsub(rawPath, "\\", "/")
-        local httpPath = normalizedBaseUrl .. normalizedPath
-        local ok, source = pcall(function()
-            return game:HttpGet(httpPath, true)
-        end)
-
-        if ok and type(source) == "string" and source ~= "" then
-            return loadstring(source, "@" .. httpPath)()
         end
     end
 
@@ -253,11 +299,25 @@ function Batata.Util.EnsureUpgradeDb()
 end
 
 function Batata.Util.EnsureData()
-    if Batata.DataConnection and Batata.DataConnection.Connected then
+    if Batata.DataLoaded == true then
         return Batata.Data
     end
 
-    return Batata.Util.LoadFile(Batata.Paths.Data)
+    if isConnectionActive(Batata.DataConnection) then
+        Batata.DataLoaded = true
+        return Batata.Data
+    end
+
+    local result = Batata.Util.LoadFile(Batata.Paths.Data)
+    if result ~= nil then
+        Batata.DataLoaded = true
+    end
+
+    if isConnectionActive(Batata.DataConnection) then
+        return Batata.Data
+    end
+
+    return result
 end
 
 function Batata.Util.PauseAutomationModules(excludedKeys)
