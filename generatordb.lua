@@ -1,6 +1,8 @@
-_G.Batata = _G.Batata or {}
+local ROOT = getgenv and getgenv() or _G
+ROOT.Batata = ROOT.Batata or {}
+_G.Batata = ROOT.Batata
 
-local Batata = _G.Batata
+local Batata = ROOT.Batata
 Batata.DB = Batata.DB or {}
 
 if Batata.DB.GeneratorDB then
