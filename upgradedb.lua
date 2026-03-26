@@ -113,6 +113,27 @@ function DB:GetCurrentCost(id, level)
     return upgrade.Cost * (upgrade.Growth ^ currentLevel)
 end
 
+function DB:GetRemoteCost(id, level)
+    if not Batata.Util or type(Batata.Util.TryGetRemoteNumber) ~= "function" then
+        return nil
+    end
+
+    local keys = { "Cost", "CurrentCost", "Price", "Value" }
+    local currentLevel = math.max(0, math.floor(tonumber(level) or 0))
+
+    local response = Batata.Util.TryGetRemoteNumber("GetUpgradeCost", keys, id)
+    if response ~= nil then
+        return response
+    end
+
+    response = Batata.Util.TryGetRemoteNumber("GetUpgradeCost", keys, id, currentLevel)
+    if response ~= nil then
+        return response
+    end
+
+    return nil
+end
+
 Batata.DB.UpgradeDB = DB
 
 return DB
