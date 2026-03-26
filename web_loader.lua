@@ -118,10 +118,20 @@ Batata = loadRemoteModule("shared.lua")
 local ROOT = getgenv and getgenv() or _G
 ROOT.Batata = Batata
 _G.Batata = Batata
+
+if type(Batata.ActiveGui) == "table" and type(Batata.ActiveGui.Stop) == "function" then
+    pcall(function()
+        Batata.ActiveGui:Stop()
+    end)
+end
+
 Batata.SourceBaseUrl = normalizedBaseUrl
-Batata.BootStatus = Batata.BootStatus or {}
-Batata.BootLog = Batata.BootLog or {}
-Batata.BootErrors = Batata.BootErrors or {}
+Batata.RemoteSourceCache = {}
+Batata.LoadedFileCache = {}
+Batata.LoadedFileUrls = {}
+Batata.BootStatus = {}
+Batata.BootLog = {}
+Batata.BootErrors = {}
 
 bootStep("precache.lua", function()
     local seen = {}
