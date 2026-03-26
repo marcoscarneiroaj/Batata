@@ -40,6 +40,9 @@ local function loadRemoteModule(fileName)
 end
 
 local Batata = loadRemoteModule("shared.lua")
+local ROOT = getgenv and getgenv() or _G
+ROOT.Batata = Batata
+_G.Batata = Batata
 Batata.SourceBaseUrl = normalizedBaseUrl
 
 pcall(function()
