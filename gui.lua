@@ -227,11 +227,181 @@ for _, definition in ipairs(moduleDefinitions) do
     moduleByKey[definition.Key] = definition
 end
 
+local getCurrentProfile
+local getModuleState
+local safeEnsure
+
 local function isTemporarilyDisabled(definition)
     return type(definition) == "table" and definition.TemporarilyDisabled == true
 end
 
-local function getCurrentProfile()
+local function cloneBooleanMap(source)
+    local copy = {}
+    if type(source) ~= "table" then
+        return copy
+    end
+
+    for key, value in pairs(source) do
+        copy[key] = value == true
+    end
+
+    return copy
+end
+
+local function buildModuleConfigSnapshot()
+    local snapshot = {
+        Data = true,
+    }
+
+    for _, definition in ipairs(moduleDefinitions) do
+        if definition.ModuleName and not isTemporarilyDisabled(definition) then
+            local state = getModuleState(definition)
+            snapshot[definition.Key] = state and state.Enabled == true or false
+        end
+    end
+
+    snapshot.Genetics = false
+    return snapshot
+end
+
+local function buildLocalConfig()
+    local _, profileName = getCurrentProfile()
+    local sellState = getModuleState(moduleByKey.Sell)
+    local prestigeState = getModuleState(moduleByKey.Prestige)
+    local potionState = getModuleState(moduleByKey.Potion)
+
+    return {
+        Version = 1,
+        DelayProfile = profileName,
+        Modules = buildModuleConfigSnapshot(),
+        Sell = {
+            CommonMinPrice = sellState and sellState.CommonMinPrice or 0,
+            GoldenMinPrice = sellState and sellState.GoldenMinPrice or 2,
+            Delay = sellState and sellState.Delay or 1,
+        },
+        Prestige = {
+            TargetValue = prestigeState and prestigeState.TargetValue or 0,
+        },
+        Potion = {
+            SelectedPotions = cloneBooleanMap(potionState and potionState.SelectedPotions or nil),
+        },
+        SavedAt = os.time(),
+    }
+end
+
+local function saveLocalConfig()
+    if not Batata.Util or type(Batata.Util.SaveLocalConfig) ~= "function" then
+        return false
+    end
+
+    local ok, saved, err = pcall(function()
+        return Batata.Util.SaveLocalConfig(buildLocalConfig())
+    end)
+
+    if not ok then
+        Batata.LastConfigError = tostring(saved)
+        return false
+    end
+
+    if saved ~= true then
+        Batata.LastConfigError = tostring(err or "falha ao salvar config")
+        return false
+    end
+
+    Batata.LastConfigError = nil
+    return true
+end
+
+local function applySavedRuntimeConfig(config)
+    if type(config) ~= "table" then
+        return
+    end
+
+    if type(config.DelayProfile) == "string" then
+        Batata.Util.SetDelayProfile(config.DelayProfile)
+    end
+
+    if type(config.Sell) == "table" then
+        local ok, controller = ensureSellController()
+        if ok and type(controller) == "table" then
+            if type(controller.SetCommonMinPrice) == "function" then
+                controller:SetCommonMinPrice(config.Sell.CommonMinPrice)
+            end
+            if type(controller.SetGoldenMinPrice) == "function" then
+                controller:SetGoldenMinPrice(config.Sell.GoldenMinPrice)
+            end
+            if type(controller.SetDelay) == "function" then
+                controller:SetDelay(config.Sell.Delay)
+            end
+        end
+    end
+
+    if type(config.Prestige) == "table" then
+        local ok, controller = ensurePrestigeController()
+        if ok and type(controller) == "table" and type(controller.SetTargetValue) == "function" then
+            controller:SetTargetValue(config.Prestige.TargetValue)
+        end
+    end
+
+    if type(config.Potion) == "table" and type(config.Potion.SelectedPotions) == "table" then
+        local ok, controller = ensurePotionController()
+        if ok and type(controller) == "table" and type(controller.SetPotionEnabled) == "function" then
+            for potionId, enabled in pairs(config.Potion.SelectedPotions) do
+                controller:SetPotionEnabled(potionId, enabled == true)
+            end
+        end
+    end
+end
+
+local function applySavedStartupConfig()
+    if not Batata.Util or type(Batata.Util.LoadLocalConfig) ~= "function" then
+        setStartupModules()
+        return
+    end
+
+    local ok, config = pcall(Batata.Util.LoadLocalConfig)
+    if not ok or type(config) ~= "table" or type(config.Modules) ~= "table" then
+        setStartupModules()
+        return
+    end
+
+    applySavedRuntimeConfig(config)
+
+    local dataOk = ensureData()
+    if not dataOk then
+        infoLabels.SummaryStatus.Text = "falha ao carregar data.lua"
+        return
+    end
+
+    local failedModules = {}
+    for _, definition in ipairs(moduleDefinitions) do
+        if definition.ModuleName then
+            if isTemporarilyDisabled(definition) then
+                local loadedModule = Batata.Modules[definition.ModuleName]
+                if loadedModule and type(loadedModule.SetEnabled) == "function" then
+                    loadedModule:SetEnabled(false)
+                end
+            else
+                local okEnsure, controller = safeEnsure(definition)
+                if okEnsure and type(controller.SetEnabled) == "function" then
+                    controller:SetEnabled(config.Modules[definition.Key] == true)
+                else
+                    table.insert(failedModules, definition.Title)
+                end
+            end
+        end
+    end
+
+    pausedSnapshot = nil
+    scriptPaused = false
+
+    if #failedModules > 0 then
+        infoLabels.SummaryStatus.Text = "alguns modulos falharam"
+        infoLabels.SummaryModules.Text = table.concat(failedModules, ", ")
+    end
+end
+
+getCurrentProfile = function()
     local profile, profileName = Batata.Util.GetCurrentDelayProfile()
     return profile or {}, profileName or "medio"
 end
@@ -311,7 +481,7 @@ local function getCurrencySnapshot()
     }
 end
 
-local function getModuleState(definition)
+getModuleState = function(definition)
     if definition.Key == "Data" then
         local connected = isDataConnected()
         return {
@@ -328,7 +498,7 @@ local function getModuleState(definition)
     return module
 end
 
-local function safeEnsure(definition)
+safeEnsure = function(definition)
     local ok, result = definition.Ensure()
     if definition.Key == "Data" then
         return ok, result
@@ -1465,6 +1635,7 @@ for _, definition in ipairs(moduleDefinitions) do
             end
 
             controller:Toggle()
+            saveLocalConfig()
         end
 
         bind(moduleRows[definition.Key].Row.MouseButton1Click, toggleModule)
@@ -1485,10 +1656,12 @@ end)
 
 bind(allOnButton.MouseButton1Click, function()
     setAllModules(true)
+    saveLocalConfig()
 end)
 
 bind(allOffButton.MouseButton1Click, function()
     setAllModules(false)
+    saveLocalConfig()
 end)
 
 bind(reconnectDataButton.MouseButton1Click, function()
@@ -1498,6 +1671,7 @@ end)
 for profileName, button in pairs(profileButtons) do
     bind(button.MouseButton1Click, function()
         Batata.Util.SetDelayProfile(profileName)
+        saveLocalConfig()
         refreshGui()
     end)
 end
@@ -1528,6 +1702,7 @@ bind(sellGoldenBox.FocusLost, function()
     if controller and type(controller.SetGoldenMinPrice) == "function" then
         controller:SetGoldenMinPrice(sellGoldenBox.Text)
     end
+    saveLocalConfig()
 end)
 
 bind(sellCommonBox.FocusLost, function()
@@ -1535,6 +1710,7 @@ bind(sellCommonBox.FocusLost, function()
     if controller and type(controller.SetCommonMinPrice) == "function" then
         controller:SetCommonMinPrice(sellCommonBox.Text)
     end
+    saveLocalConfig()
 end)
 
 bind(sellDelayBox.FocusLost, function()
@@ -1542,6 +1718,7 @@ bind(sellDelayBox.FocusLost, function()
     if controller and type(controller.SetDelay) == "function" then
         controller:SetDelay(sellDelayBox.Text)
     end
+    saveLocalConfig()
 end)
 
 for _, rarity in ipairs(rarityOptions) do
@@ -1603,6 +1780,7 @@ for _, potionInfo in ipairs(potionOptions) do
                 local state = controller:GetState()
                 local enabled = state.SelectedPotions and state.SelectedPotions[potionInfo.ItemId] == true
                 controller:SetPotionEnabled(potionInfo.ItemId, not enabled)
+                saveLocalConfig()
             end
         end)
     end
@@ -1692,7 +1870,7 @@ task.spawn(function()
     end
 
     if ok then
-        setStartupModules()
+        applySavedStartupConfig()
     end
     refreshGui()
 end)
