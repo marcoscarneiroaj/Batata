@@ -13,7 +13,8 @@ local upgradeDb = Batata.Util.EnsureUpgradeDb()
 
 local BUY_DELAY = 0
 local LOOP_DELAY = 0
-local MAX_PURCHASES_PER_PASS = 120
+local MAX_PURCHASES_PER_PASS = 240
+local PURCHASES_BEFORE_YIELD = 120
 
 local Module = {
     Running = true,
@@ -26,10 +27,20 @@ local Module = {
     LastCostSource = "local",
 }
 
+local purchasesSinceYield = 0
+
 local function waitIfNeeded(seconds)
     local delaySeconds = tonumber(seconds) or 0
     if delaySeconds > 0 then
+        purchasesSinceYield = 0
         task.wait(delaySeconds)
+        return
+    end
+
+    purchasesSinceYield = purchasesSinceYield + 1
+    if purchasesSinceYield >= PURCHASES_BEFORE_YIELD then
+        purchasesSinceYield = 0
+        task.wait()
     end
 end
 
@@ -173,6 +184,8 @@ end
 
 task.spawn(function()
     while Module.Running do
+        local boughtAnyThisPass = false
+
         if Module.Enabled then
             local purchaseRemote = remotes:Get("PurchaseClickUpgrade")
             if not purchaseRemote then
@@ -210,6 +223,7 @@ task.spawn(function()
                     end)
 
                     boughtAny = true
+                    boughtAnyThisPass = true
                     waitIfNeeded(Module.BuyDelay)
                 end
 
@@ -221,7 +235,7 @@ task.spawn(function()
 
         if Module.Delay > 0 then
             task.wait(Module.Delay)
-        else
+        elseif not boughtAnyThisPass then
             task.wait()
         end
     end
