@@ -73,7 +73,7 @@ local function getBestAvailableUpgrade(cash)
 
     for _, upgrade in ipairs(upgradeDb.KnownList or upgradeDb.List) do
         local level = tonumber(levels[upgrade.Id]) or 0
-        if level < upgrade.Max and upgrade.PriorityProbe ~= true then
+        if level < upgrade.Max and upgradeDb:IsRetryOnly(upgrade.Id, level) ~= true then
             local cost = getUpgradeCost(upgrade.Id, level)
             if cash >= cost then
                 return {
@@ -89,7 +89,7 @@ local function getBestAvailableUpgrade(cash)
     return nil
 end
 
-local function getPriorityProbeTarget()
+local function getPriorityProbeTarget(cash)
     local levels = getLevels()
     local allUpgrades = upgradeDb.List or {}
     local total = #allUpgrades
@@ -104,24 +104,26 @@ local function getPriorityProbeTarget()
         local listIndex = ((startIndex + offset - 1) % total) + 1
         local upgrade = allUpgrades[listIndex]
         local level = tonumber(levels[upgrade.Id]) or 0
-        if upgrade.PriorityProbe == true and level < upgrade.Max then
+        if upgrade.PriorityProbe == true and level < upgrade.Max and upgradeDb:IsRetryOnly(upgrade.Id, level) == true then
             local cost = getUpgradeCost(upgrade.Id, level)
-            return {
-                Id = upgrade.Id,
-                Level = level,
-                Max = upgrade.Max,
-                Cost = cost,
-                PriorityProbe = true,
-                PriorityListIndex = listIndex,
-                Index = upgrade.Index,
-            }
+            if tonumber(cost) == nil or cash >= tonumber(cost) then
+                return {
+                    Id = upgrade.Id,
+                    Level = level,
+                    Max = upgrade.Max,
+                    Cost = cost,
+                    PriorityProbe = true,
+                    PriorityListIndex = listIndex,
+                    Index = upgrade.Index,
+                }
+            end
         end
     end
 
     return nil
 end
 
-local function getRetryOnlyTarget()
+local function getRetryOnlyTarget(cash)
     local levels = getLevels()
     local allUpgrades = upgradeDb.List or {}
     local total = #allUpgrades
@@ -138,15 +140,17 @@ local function getRetryOnlyTarget()
         local level = tonumber(levels[upgrade.Id]) or 0
         if level < upgrade.Max and upgrade.PriorityProbe ~= true and upgradeDb:IsRetryOnly(upgrade.Id, level) then
             local cost = getUpgradeCost(upgrade.Id, level)
-            return {
-                Id = upgrade.Id,
-                Level = level,
-                Max = upgrade.Max,
-                Cost = cost,
-                RetryOnly = true,
-                RetryListIndex = listIndex,
-                Index = upgrade.Index,
-            }
+            if tonumber(cost) == nil or cash >= tonumber(cost) then
+                return {
+                    Id = upgrade.Id,
+                    Level = level,
+                    Max = upgrade.Max,
+                    Cost = cost,
+                    RetryOnly = true,
+                    RetryListIndex = listIndex,
+                    Index = upgrade.Index,
+                }
+            end
         end
     end
 
@@ -211,18 +215,19 @@ end
 
 local function getCurrentTarget()
     local cash = getCash()
-    local priorityProbe = getPriorityProbeTarget()
-    local retryOnly = getRetryOnlyTarget()
     local best = getBestAvailableUpgrade(cash)
-
-    if priorityProbe and canProbePriority() then
-        Module.CurrentTarget = priorityProbe.Id
-        return priorityProbe
-    end
 
     if best then
         Module.CurrentTarget = best.Id
         return best
+    end
+
+    local priorityProbe = getPriorityProbeTarget(cash)
+    local retryOnly = getRetryOnlyTarget(cash)
+
+    if priorityProbe and canProbePriority() then
+        Module.CurrentTarget = priorityProbe.Id
+        return priorityProbe
     end
 
     if retryOnly and canProbeRetryOnly() then
@@ -276,8 +281,8 @@ function Module:GetState()
         CurrentTarget = self.CurrentTarget,
         LastStatus = self.LastStatus,
         Cash = getCash(),
-        PriorityProbeTarget = getPriorityProbeTarget(),
-        RetryOnlyTarget = getRetryOnlyTarget(),
+        PriorityProbeTarget = getPriorityProbeTarget(getCash()),
+        RetryOnlyTarget = getRetryOnlyTarget(getCash()),
         CostSource = self.LastCostSource,
     }
 end
@@ -305,7 +310,7 @@ task.spawn(function()
                     local target = getCurrentTarget()
                     if not target then
                         if not boughtAny then
-                            if getRetryOnlyTarget() then
+                            if getRetryOnlyTarget(getCash()) then
                                 Module.LastStatus = "Aguardando probe"
                             else
                                 Module.LastStatus = "Sem upgrade disponivel"
