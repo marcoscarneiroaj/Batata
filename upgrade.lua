@@ -11,10 +11,10 @@ end
 local remotes = Batata.Util.EnsureRemotes()
 local upgradeDb = Batata.Util.EnsureUpgradeDb()
 
-local BUY_DELAY = 0.008
-local LOOP_DELAY = 0.025
-local RETRY_ONLY_PROBE_DELAY = 0.08
-local MAX_PURCHASES_PER_PASS = 30
+local BUY_DELAY = 0
+local LOOP_DELAY = 0
+local RETRY_ONLY_PROBE_DELAY = 0.02
+local MAX_PURCHASES_PER_PASS = 120
 
 local Module = {
     Running = true,
@@ -38,6 +38,13 @@ local function getCash()
     end
 
     return tonumber(data and data.Cash) or 0
+end
+
+local function waitIfNeeded(seconds)
+    local delaySeconds = tonumber(seconds) or 0
+    if delaySeconds > 0 then
+        task.wait(delaySeconds)
+    end
 end
 
 local function getLevels()
@@ -250,14 +257,14 @@ end
 
 function Module:SetDelay(value)
     local numberValue = tonumber(value)
-    if numberValue and numberValue >= 0.02 then
+    if numberValue and numberValue >= 0 then
         self.Delay = numberValue
     end
 end
 
 function Module:SetBuyDelay(value)
     local numberValue = tonumber(value)
-    if numberValue and numberValue >= 0.01 then
+    if numberValue and numberValue >= 0 then
         self.BuyDelay = numberValue
     end
 end
@@ -344,7 +351,7 @@ task.spawn(function()
                             purchaseRemote:FireServer(target.Id)
                         end)
                         boughtAny = true
-                        task.wait(Module.BuyDelay)
+                        waitIfNeeded(Module.BuyDelay)
                         break
                     end
 
@@ -362,12 +369,16 @@ task.spawn(function()
                         purchaseRemote:FireServer(target.Id)
                     end)
                     boughtAny = true
-                    task.wait(Module.BuyDelay)
+                    waitIfNeeded(Module.BuyDelay)
                 end
             end
         end
 
-        task.wait(Module.Delay)
+        if Module.Delay > 0 then
+            task.wait(Module.Delay)
+        else
+            task.wait()
+        end
     end
 end)
 
