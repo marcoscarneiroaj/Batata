@@ -59,11 +59,27 @@ end
 
 local function getPotentialPrestigePoints()
     local stats = getStats()
-    if type(stats) ~= "table" then
-        return 0
+    if type(stats) == "table" then
+        local statValue = tonumber(stats.PotentialPrestigePoints)
+        if statValue ~= nil and statValue > 0 then
+            Module.LastPotentialSource = "data"
+            return statValue
+        end
     end
 
-    return tonumber(stats.PotentialPrestigePoints) or 0
+    if Batata.Util and type(Batata.Util.TryGetRemoteNumber) == "function" then
+        local remoteValue = Batata.Util.TryGetRemoteNumber(
+            "GetPotentialPrestigePoints",
+            { "PotentialPrestigePoints", "FinalPoints", "Points", "Value" }
+        )
+        if remoteValue ~= nil then
+            Module.LastPotentialSource = "server"
+            return remoteValue
+        end
+    end
+
+    Module.LastPotentialSource = "data"
+    return type(stats) == "table" and (tonumber(stats.PotentialPrestigePoints) or 0) or 0
 end
 
 local function getSessionTotals()
@@ -151,6 +167,7 @@ function Module:GetState()
         SessionPrestiges = sessionPrestiges,
         SessionPrestigePoints = sessionPrestigePoints,
         LastStatus = self.Enabled and "Rodando" or "Desligado",
+        PotentialSource = self.LastPotentialSource,
     }
 end
 
