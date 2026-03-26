@@ -27,6 +27,8 @@ local Module = {
     LastPriorityProbeAt = 0,
     RetryCursor = 1,
     LastRetryProbeAt = 0,
+    OptimisticLevels = {},
+    OptimisticTouchedAt = {},
 }
 
 local function getCash()
@@ -60,6 +62,38 @@ local function getLevels()
     return {}
 end
 
+local function getEffectiveLevel(levels, upgradeId)
+    local serverLevel = tonumber(levels[upgradeId]) or 0
+    local predictedLevel = tonumber(Module.OptimisticLevels[upgradeId]) or nil
+    local touchedAt = tonumber(Module.OptimisticTouchedAt[upgradeId]) or 0
+
+    if predictedLevel ~= nil then
+        if predictedLevel <= serverLevel or (os.clock() - touchedAt) >= 5 then
+            Module.OptimisticLevels[upgradeId] = nil
+            Module.OptimisticTouchedAt[upgradeId] = nil
+            predictedLevel = nil
+        end
+    end
+
+    if predictedLevel ~= nil and predictedLevel > serverLevel then
+        return predictedLevel
+    end
+
+    return serverLevel
+end
+
+local function markOptimisticPurchase(upgradeId, currentLevel, maxLevel)
+    local nextLevel = math.max(0, math.floor(tonumber(currentLevel) or 0)) + 1
+    local maxAllowed = tonumber(maxLevel)
+
+    if maxAllowed ~= nil then
+        nextLevel = math.min(nextLevel, maxAllowed)
+    end
+
+    Module.OptimisticLevels[upgradeId] = nextLevel
+    Module.OptimisticTouchedAt[upgradeId] = os.clock()
+end
+
 local function getUpgradeCost(upgradeId, level)
     local remoteCost = nil
     if type(upgradeDb.GetRemoteCost) == "function" then
@@ -79,7 +113,7 @@ local function getBestAvailableUpgrade(cash)
     local levels = getLevels()
 
     for _, upgrade in ipairs(upgradeDb.KnownList or upgradeDb.List) do
-        local level = tonumber(levels[upgrade.Id]) or 0
+        local level = getEffectiveLevel(levels, upgrade.Id)
         if level < upgrade.Max and upgradeDb:IsRetryOnly(upgrade.Id, level) ~= true then
             local cost = getUpgradeCost(upgrade.Id, level)
             if cash >= cost then
@@ -87,6 +121,7 @@ local function getBestAvailableUpgrade(cash)
                     Id = upgrade.Id,
                     Cost = cost,
                     Level = level,
+                    Max = upgrade.Max,
                     Index = upgrade.Index,
                 }
             end
@@ -110,7 +145,7 @@ local function getPriorityProbeTarget(cash)
     for offset = 0, total - 1 do
         local listIndex = ((startIndex + offset - 1) % total) + 1
         local upgrade = allUpgrades[listIndex]
-        local level = tonumber(levels[upgrade.Id]) or 0
+        local level = getEffectiveLevel(levels, upgrade.Id)
         if upgrade.PriorityProbe == true and level < upgrade.Max and upgradeDb:IsRetryOnly(upgrade.Id, level) == true then
             local cost = getUpgradeCost(upgrade.Id, level)
             if tonumber(cost) == nil or cash >= tonumber(cost) then
@@ -144,7 +179,7 @@ local function getRetryOnlyTarget(cash)
     for offset = 0, total - 1 do
         local listIndex = ((startIndex + offset - 1) % total) + 1
         local upgrade = allUpgrades[listIndex]
-        local level = tonumber(levels[upgrade.Id]) or 0
+        local level = getEffectiveLevel(levels, upgrade.Id)
         if level < upgrade.Max and upgrade.PriorityProbe ~= true and upgradeDb:IsRetryOnly(upgrade.Id, level) then
             local cost = getUpgradeCost(upgrade.Id, level)
             if tonumber(cost) == nil or cash >= tonumber(cost) then
@@ -203,11 +238,12 @@ local function getFallbackTarget()
 
     local levels = getLevels()
     local info = upgradeDb:Get(Module.CurrentTarget)
-    if not info or upgradeDb:IsRetryOnly(Module.CurrentTarget, tonumber(levels[Module.CurrentTarget]) or 0) then
+    local level = getEffectiveLevel(levels, Module.CurrentTarget)
+
+    if not info or upgradeDb:IsRetryOnly(Module.CurrentTarget, level) then
         return nil
     end
 
-    local level = tonumber(levels[Module.CurrentTarget]) or 0
     if level >= info.Max then
         return nil
     end
@@ -216,12 +252,17 @@ local function getFallbackTarget()
         Id = Module.CurrentTarget,
         Cost = getUpgradeCost(Module.CurrentTarget, level),
         Level = level,
+        Max = info.Max,
         Index = info.Index,
     }
 end
 
-local function getCurrentTarget()
-    local cash = getCash()
+local function getCurrentTarget(cashBudget)
+    local cash = tonumber(cashBudget)
+    if cash == nil then
+        cash = getCash()
+    end
+
     local best = getBestAvailableUpgrade(cash)
 
     if best then
@@ -288,6 +329,7 @@ function Module:GetState()
         CurrentTarget = self.CurrentTarget,
         LastStatus = self.LastStatus,
         Cash = getCash(),
+        OptimisticLevels = self.OptimisticLevels,
         PriorityProbeTarget = getPriorityProbeTarget(getCash()),
         RetryOnlyTarget = getRetryOnlyTarget(getCash()),
         CostSource = self.LastCostSource,
@@ -312,9 +354,10 @@ task.spawn(function()
                 Module.LastStatus = "Remote ausente"
             else
                 local boughtAny = false
+                local workingCash = getCash()
 
                 for _ = 1, MAX_PURCHASES_PER_PASS do
-                    local target = getCurrentTarget()
+                    local target = getCurrentTarget(workingCash)
                     if not target then
                         if not boughtAny then
                             if getRetryOnlyTarget(getCash()) then
@@ -327,7 +370,7 @@ task.spawn(function()
                     end
 
                     if target.PriorityProbe == true or target.RetryOnly == true then
-                        local cash = getCash()
+                        local cash = workingCash
                         if tonumber(target.Cost) ~= nil and cash < tonumber(target.Cost) then
                             if not boughtAny then
                                 Module.LastStatus = "Aguardando cash"
@@ -351,11 +394,15 @@ task.spawn(function()
                             purchaseRemote:FireServer(target.Id)
                         end)
                         boughtAny = true
+                        if tonumber(target.Cost) ~= nil then
+                            workingCash = math.max(0, workingCash - tonumber(target.Cost))
+                        end
+                        markOptimisticPurchase(target.Id, target.Level, target.Max)
                         waitIfNeeded(Module.BuyDelay)
                         break
                     end
 
-                    local cash = getCash()
+                    local cash = workingCash
                     if cash < target.Cost then
                         if not boughtAny then
                             Module.LastStatus = "Aguardando cash"
@@ -369,6 +416,10 @@ task.spawn(function()
                         purchaseRemote:FireServer(target.Id)
                     end)
                     boughtAny = true
+                    if tonumber(target.Cost) ~= nil then
+                        workingCash = math.max(0, workingCash - tonumber(target.Cost))
+                    end
+                    markOptimisticPurchase(target.Id, target.Level, target.Max)
                     waitIfNeeded(Module.BuyDelay)
                 end
             end
