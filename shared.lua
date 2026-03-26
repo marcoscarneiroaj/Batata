@@ -1,3 +1,5 @@
+local HttpService = game:GetService("HttpService")
+
 local ROOT = getgenv and getgenv() or _G
 ROOT.Batata = ROOT.Batata or {}
 _G.Batata = ROOT.Batata
@@ -47,6 +49,10 @@ Batata.LoadedFileCache = Batata.LoadedFileCache or {}
 Batata.LoadedFileUrls = Batata.LoadedFileUrls or {}
 Batata.BootLog = Batata.BootLog or {}
 Batata.BootErrors = Batata.BootErrors or {}
+Batata.LocalConfigFolder = Batata.LocalConfigFolder or "batata"
+Batata.LocalConfigPath = Batata.LocalConfigPath or "batata/profile.json"
+Batata.LocalConfig = Batata.LocalConfig or nil
+Batata.LocalConfigLoaded = Batata.LocalConfigLoaded or false
 
 Batata.DelayProfiles = Batata.DelayProfiles or {
     economico = {
@@ -246,6 +252,70 @@ function Batata.Util.LoadFile(path)
     end
 
     error("nao foi possivel carregar arquivo: " .. rawPath)
+end
+
+function Batata.Util.CanPersistLocalConfig()
+    return type(readfile) == "function" and type(writefile) == "function"
+end
+
+function Batata.Util.LoadLocalConfig(forceReload)
+    if forceReload ~= true and Batata.LocalConfigLoaded == true then
+        return Batata.LocalConfig
+    end
+
+    Batata.LocalConfigLoaded = true
+    Batata.LocalConfig = nil
+
+    if type(readfile) ~= "function" then
+        return nil
+    end
+
+    local ok, content = pcall(readfile, Batata.LocalConfigPath)
+    if not ok or type(content) ~= "string" or content == "" then
+        return nil
+    end
+
+    local decodedOk, decoded = pcall(function()
+        return HttpService:JSONDecode(content)
+    end)
+
+    if not decodedOk or type(decoded) ~= "table" then
+        return nil
+    end
+
+    Batata.LocalConfig = decoded
+    return decoded
+end
+
+function Batata.Util.SaveLocalConfig(config)
+    if type(config) ~= "table" then
+        return false, "config invalida"
+    end
+
+    if type(writefile) ~= "function" then
+        return false, "writefile indisponivel"
+    end
+
+    if type(makefolder) == "function" then
+        pcall(makefolder, Batata.LocalConfigFolder)
+    end
+
+    local okEncode, encoded = pcall(function()
+        return HttpService:JSONEncode(config)
+    end)
+
+    if not okEncode or type(encoded) ~= "string" then
+        return false, "falha ao serializar config"
+    end
+
+    local okWrite, writeErr = pcall(writefile, Batata.LocalConfigPath, encoded)
+    if not okWrite then
+        return false, tostring(writeErr)
+    end
+
+    Batata.LocalConfig = config
+    Batata.LocalConfigLoaded = true
+    return true
 end
 
 function Batata.Util.TryInvokeRemote(remoteName, ...)
