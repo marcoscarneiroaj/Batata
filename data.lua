@@ -1,8 +1,10 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-_G.Batata = _G.Batata or {}
+local ROOT = getgenv and getgenv() or _G
+ROOT.Batata = ROOT.Batata or {}
+_G.Batata = ROOT.Batata
 
-local Batata = _G.Batata
+local Batata = ROOT.Batata
 Batata.Data = Batata.Data or {}
 Batata.Remotes = Batata.Remotes or (Batata.Util and Batata.Util.LoadFile and Batata.Util.LoadFile("remotes.lua"))
 Batata.DB = Batata.DB or {}
