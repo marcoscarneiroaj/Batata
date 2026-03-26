@@ -1441,6 +1441,10 @@ local function stopEverything()
     if screenGui then
         screenGui:Destroy()
     end
+
+    if Batata.ActiveGui and Batata.ActiveGui.Stop == stopEverything then
+        Batata.ActiveGui = nil
+    end
 end
 
 local function refreshGui()
@@ -1945,7 +1949,11 @@ task.spawn(function()
     end
 end)
 
-return {
+local guiController = {
     Stop = stopEverything,
     Refresh = refreshGui,
 }
+
+Batata.ActiveGui = guiController
+
+return guiController
