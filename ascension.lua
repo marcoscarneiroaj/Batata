@@ -51,11 +51,27 @@ end
 
 local function getRequiredPrestigePoints()
     local stats = getStats()
-    if type(stats) ~= "table" then
-        return math.huge
+    if type(stats) == "table" then
+        local statCost = tonumber(stats.AscensionCost)
+        if statCost ~= nil and statCost > 0 then
+            Module.LastCostSource = "data"
+            return statCost
+        end
     end
 
-    return tonumber(stats.AscensionCost) or math.huge
+    if Batata.Util and type(Batata.Util.TryGetRemoteNumber) == "function" then
+        local remoteCost = Batata.Util.TryGetRemoteNumber(
+            "GetAscensionInfo",
+            { "AscensionCost", "Cost", "RequiredPrestigePoints", "Price", "Value" }
+        )
+        if remoteCost ~= nil then
+            Module.LastCostSource = "server"
+            return remoteCost
+        end
+    end
+
+    Module.LastCostSource = "data"
+    return type(stats) == "table" and (tonumber(stats.AscensionCost) or math.huge) or math.huge
 end
 
 local function getSessionAscensions()
@@ -126,6 +142,7 @@ function Module:GetState()
         SecondsUntilNextTry = math.max(0, MIN_INTERVAL - (getNow() - self.LastAscensionAt)),
         SessionAscensions = getSessionAscensions(),
         LastStatus = self.Enabled and "Rodando" or "Desligado",
+        CostSource = self.LastCostSource,
     }
 end
 
