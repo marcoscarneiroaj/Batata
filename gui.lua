@@ -93,8 +93,33 @@ local function runFile(path)
     return ok, result
 end
 
+local function isConnectionActive(connection)
+    if not connection then
+        return false
+    end
+
+    local connected = true
+    pcall(function()
+        connected = connection.Connected
+    end)
+
+    return connected ~= false
+end
+
+local function isDataConnected()
+    return Batata.DataLoaded == true or isConnectionActive(Batata.DataConnection)
+end
+
 local function ensureData()
     local ok, result = pcall(Batata.Util.EnsureData)
+    if ok then
+        Batata.LastEnsureDataError = nil
+        if result ~= nil then
+            Batata.DataLoaded = true
+        end
+    else
+        Batata.LastEnsureDataError = tostring(result)
+    end
     return ok, result
 end
 
@@ -106,18 +131,23 @@ end
 local function ensureModule(moduleKey, pathKey)
     local module = Batata.Modules[moduleKey]
     if module and module.Running == true then
+        Batata.LastEnsureModuleError = nil
         Batata.Util.ApplyCurrentDelayProfileToModule(module)
         return true, module
     end
 
-    local remotesOk = ensureRemotes()
+    local remotesOk, remotesResult = ensureRemotes()
     if not remotesOk then
+        Batata.LastEnsureModuleError = "falha ao carregar remotes.lua: " .. tostring(remotesResult)
         return false, nil
     end
 
     local ok, result = runFile(SCRIPT_PATHS[pathKey])
     if ok and type(result) == "table" then
+        Batata.LastEnsureModuleError = nil
         Batata.Util.ApplyCurrentDelayProfileToModule(result)
+    elseif not ok then
+        Batata.LastEnsureModuleError = string.format("%s falhou: %s", tostring(SCRIPT_PATHS[pathKey] or pathKey), tostring(result))
     end
 
     return ok, result
@@ -283,7 +313,7 @@ end
 
 local function getModuleState(definition)
     if definition.Key == "Data" then
-        local connected = Batata.DataConnection and Batata.DataConnection.Connected == true
+        local connected = isDataConnected()
         return {
             Enabled = connected,
             LastStatus = connected and "Data conectado" or "Data desconectado",
@@ -1099,6 +1129,8 @@ local function setAllModules(enabled)
         return
     end
 
+    local failedModules = {}
+
     for _, definition in ipairs(moduleDefinitions) do
         if definition.ModuleName then
             if isTemporarilyDisabled(definition) then
@@ -1107,12 +1139,19 @@ local function setAllModules(enabled)
                     loadedModule:SetEnabled(false)
                 end
             else
-            local ok, controller = safeEnsure(definition)
-            if ok and type(controller.SetEnabled) == "function" then
-                controller:SetEnabled(enabled)
-            end
+                local ok, controller = safeEnsure(definition)
+                if ok and type(controller.SetEnabled) == "function" then
+                    controller:SetEnabled(enabled)
+                else
+                    table.insert(failedModules, definition.Title)
+                end
             end
         end
+    end
+
+    if #failedModules > 0 then
+        infoLabels.SummaryStatus.Text = "alguns modulos falharam"
+        infoLabels.SummaryModules.Text = table.concat(failedModules, ", ")
     end
 
     pausedSnapshot = nil
@@ -1221,9 +1260,17 @@ local function refreshGui()
         setChoiceButtonState(button, buttonProfileName == profileName)
     end
 
-    local dataConnected = Batata.DataConnection and Batata.DataConnection.Connected == true
+    local dataConnected = isDataConnected()
     if not dataConnected then
-        infoLabels.SummaryStatus.Text = "data desconectado"
+        if Batata.LastEnsureDataError then
+            infoLabels.SummaryStatus.Text = "falha ao carregar data.lua"
+            infoLabels.SummaryModules.Text = tostring(Batata.LastEnsureDataError)
+        elseif type(Batata.BootErrors) == "table" and Batata.BootErrors["data.lua"] then
+            infoLabels.SummaryStatus.Text = "falha no boot web"
+            infoLabels.SummaryModules.Text = tostring(Batata.BootErrors["data.lua"])
+        else
+            infoLabels.SummaryStatus.Text = "data desconectado"
+        end
     elseif scriptPaused then
         infoLabels.SummaryStatus.Text = "script pausado"
     elseif enabledCount == total then
@@ -1232,6 +1279,9 @@ local function refreshGui()
         infoLabels.SummaryStatus.Text = "todas automacoes desligadas"
     else
         infoLabels.SummaryStatus.Text = tostring(enabledCount) .. " modulos ligados"
+        if Batata.LastEnsureModuleError then
+            infoLabels.SummaryModules.Text = tostring(Batata.LastEnsureModuleError)
+        end
     end
 
     setMasterSwitch(not scriptPaused)
@@ -1408,6 +1458,9 @@ for _, definition in ipairs(moduleDefinitions) do
             local ok, controller = safeEnsure(definition)
             if not ok then
                 infoLabels.SummaryStatus.Text = "falha ao carregar " .. string.lower(definition.Key) .. ".lua"
+                if Batata.LastEnsureModuleError then
+                    infoLabels.SummaryModules.Text = tostring(Batata.LastEnsureModuleError)
+                end
                 return
             end
 
@@ -1629,7 +1682,15 @@ showTab("Principal")
 refreshGui()
 
 task.spawn(function()
-    local ok = ensureData()
+    local ok = false
+    for _ = 1, 3 do
+        ok = ensureData()
+        if ok then
+            break
+        end
+        task.wait(1)
+    end
+
     if ok then
         setStartupModules()
     end
