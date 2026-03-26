@@ -90,6 +90,22 @@ local function getUpgradeLevel(upgradeId)
     return tonumber(upgrades[upgradeId]) or 0
 end
 
+local function getPrestigeUpgradeCost(upgradeId)
+    if not Batata.Util or type(Batata.Util.TryGetRemoteNumber) ~= "function" then
+        return nil
+    end
+
+    local keys = { "Cost", "CurrentCost", "Price", "Value" }
+    local response = Batata.Util.TryGetRemoteNumber("GetPrestigeUpgradeCost", keys, upgradeId)
+    if response ~= nil then
+        Module.LastCostSource = "server"
+        return response
+    end
+
+    Module.LastCostSource = "unknown"
+    return nil
+end
+
 local function countCompletedTargets()
     local completed = 0
 
@@ -191,6 +207,7 @@ end
 
 function Module:GetState()
     local nextUpgradeId, nextUpgradeLevel = findNextTarget()
+    local nextUpgradeCost = nextUpgradeId and getPrestigeUpgradeCost(nextUpgradeId) or nil
 
     return {
         Enabled = self.Enabled == true,
@@ -203,8 +220,10 @@ function Module:GetState()
         TotalTargets = #TARGET_UPGRADES,
         NextUpgradeId = nextUpgradeId,
         NextUpgradeLevel = nextUpgradeLevel,
+        NextUpgradeCost = nextUpgradeCost,
         LastUpgradeId = self.LastUpgradeId,
         LastStatus = self.LastStatus,
+        CostSource = self.LastCostSource,
     }
 end
 
@@ -240,19 +259,26 @@ task.spawn(function()
                 elseif not canRetryTarget(nextUpgradeId, currentLevel) then
                     Module.LastStatus = "Esperando liberar " .. tostring(nextUpgradeId)
                 else
-                    Module.LastUpgradeId = nextUpgradeId
-                    Module.LastUpgradeLevel = currentLevel
-                    Module.LastAttemptAt = getNow()
-                    Module.LastStatus = string.format(
-                        "Tentando %s %d/%d",
-                        tostring(nextUpgradeId),
-                        math.min(TARGET_LEVEL, (tonumber(currentLevel) or 0) + 1),
-                        TARGET_LEVEL
-                    )
+                    local currentPP = getCurrentPrestigePoints()
+                    local nextUpgradeCost = getPrestigeUpgradeCost(nextUpgradeId)
 
-                    pcall(function()
-                        purchaseRemote:FireServer(nextUpgradeId)
-                    end)
+                    if tonumber(nextUpgradeCost) ~= nil and currentPP < tonumber(nextUpgradeCost) then
+                        Module.LastStatus = "Aguardando PP"
+                    else
+                        Module.LastUpgradeId = nextUpgradeId
+                        Module.LastUpgradeLevel = currentLevel
+                        Module.LastAttemptAt = getNow()
+                        Module.LastStatus = string.format(
+                            "Tentando %s %d/%d",
+                            tostring(nextUpgradeId),
+                            math.min(TARGET_LEVEL, (tonumber(currentLevel) or 0) + 1),
+                            TARGET_LEVEL
+                        )
+
+                        pcall(function()
+                            purchaseRemote:FireServer(nextUpgradeId)
+                        end)
+                    end
                 end
             end
         end
