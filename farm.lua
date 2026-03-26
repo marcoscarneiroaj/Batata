@@ -86,6 +86,21 @@ local function getOwnedGenerators()
     return {}
 end
 
+local function getGeneratorCost(generatorId, ownedCount)
+    local remoteCost = nil
+    if type(generatorDb.GetRemoteCost) == "function" then
+        remoteCost = generatorDb:GetRemoteCost(generatorId, ownedCount)
+    end
+
+    if tonumber(remoteCost) ~= nil then
+        Module.LastCostSource = "server"
+        return tonumber(remoteCost)
+    end
+
+    Module.LastCostSource = "local"
+    return generatorDb:GetCurrentCost(generatorId, ownedCount)
+end
+
 local function scheduleNextCycle(reason)
     Module.SlotFull = false
     Module.CurrentTarget = nil
@@ -176,7 +191,7 @@ local function buyMaximumDescending()
         local ownedCount = math.max(0, math.floor(tonumber(owned[generator.Id]) or 0))
 
         while cash > 0 and not Module.SlotFull do
-            local cost = generatorDb:GetCurrentCost(generator.Id, ownedCount)
+            local cost = getGeneratorCost(generator.Id, ownedCount)
             if cash < cost then
                 break
             end
@@ -275,6 +290,7 @@ function Module:GetState()
         InitialBuyDone = self.InitialBuyDone == true,
         SecondsUntilNextAction = math.max(0, (self.NextActionAt or 0) - os.clock()),
         CycleCount = self.CycleCount or 0,
+        CostSource = self.LastCostSource,
     }
 end
 
