@@ -1,6 +1,9 @@
 local Players = game:GetService("Players")
 
-local Batata = _G.Batata or loadstring(readfile("batata\\shared.lua"), "@batata\\shared.lua")()
+local ROOT = getgenv and getgenv() or _G
+local Batata = ROOT.Batata or loadstring(readfile("batata\\shared.lua"), "@batata\\shared.lua")()
+ROOT.Batata = Batata
+_G.Batata = Batata
 
 if Batata.Modules.AutoNotifications then
     return Batata.Modules.AutoNotifications
