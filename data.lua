@@ -7,9 +7,22 @@ _G.Batata = ROOT.Batata
 local Batata = ROOT.Batata
 Batata.Data = Batata.Data or {}
 Batata.DB = Batata.DB or {}
+Batata.BootLog = Batata.BootLog or {}
+Batata.BootErrors = Batata.BootErrors or {}
 
 local Data = Batata.Data
 local inventoryDb = Batata.DB.Inventory
+
+local function recordBoot(stage, message)
+    local entry = {
+        Stage = stage,
+        Message = tostring(message or ""),
+        Timestamp = os.clock(),
+    }
+
+    table.insert(Batata.BootLog, entry)
+    Batata.BootErrors[stage] = entry.Message
+end
 
 local function ensureRemoteTable()
     if type(Batata.Remotes) == "table" and Batata.Remotes.DataUpdated then
@@ -217,11 +230,14 @@ local function updateData(payload)
     end
 end
 
-if Batata.DataConnection and Batata.DataConnection.Connected then
-    Batata.DataConnection:Disconnect()
+if Batata.DataConnection and Batata.DataConnection.Disconnect then
+    pcall(function()
+        Batata.DataConnection:Disconnect()
+    end)
 end
 
 if not dataUpdatedRemote or not dataUpdatedRemote.OnClientEvent then
+    recordBoot("data.lua", "DataUpdated remoto ausente")
     error("DataUpdated remoto ausente")
 end
 
@@ -231,5 +247,8 @@ Batata.DataConnection = dataUpdatedRemote.OnClientEvent:Connect(function(payload
         warn("[BatataData] erro ao processar DataUpdated: " .. tostring(err))
     end
 end)
+Batata.DataLoaded = true
+Batata.LastEnsureDataError = nil
+recordBoot("data.lua", "conectado")
 
 return Data
