@@ -33,12 +33,25 @@ local function normalizeBaseUrl(url)
 end
 
 local normalizedBaseUrl = normalizeBaseUrl(BASE_URL)
-local sharedUrl = normalizedBaseUrl .. "shared.lua"
-local guiUrl = normalizedBaseUrl .. "gui.lua"
+local function loadRemoteModule(fileName)
+    local url = normalizedBaseUrl .. tostring(fileName)
+    local source = fetch(url)
+    return loadstring(source, "@" .. url)()
+end
 
-local sharedSource = fetch(sharedUrl)
-local Batata = loadstring(sharedSource, "@" .. sharedUrl)()
+local Batata = loadRemoteModule("shared.lua")
 Batata.SourceBaseUrl = normalizedBaseUrl
 
-local guiSource = fetch(guiUrl)
-return loadstring(guiSource, "@" .. guiUrl)()
+pcall(function()
+    loadRemoteModule("remotes.lua")
+end)
+
+pcall(function()
+    loadRemoteModule("inventorydb.lua")
+end)
+
+pcall(function()
+    loadRemoteModule("data.lua")
+end)
+
+return loadRemoteModule("gui.lua")
