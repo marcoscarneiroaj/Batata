@@ -3,7 +3,7 @@
 -- 2. Troque BASE_URL pela URL raw da pasta
 -- 3. Rode: loadstring(game:HttpGet("URL_DO_web_loader.lua", true))()
 
-local BASE_URL = "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPOSITORIO/main/"
+local BASE_URL = "https://raw.githubusercontent.com/marcoscarneiroaj/Batata/main/"
 
 local function fetch(url)
     local ok, body = pcall(function()
