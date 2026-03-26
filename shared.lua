@@ -325,6 +325,15 @@ function Batata.Util.TryInvokeRemote(remoteName, ...)
         return false, nil
     end
 
+    local canInvoke = false
+    pcall(function()
+        canInvoke = remote:IsA("RemoteFunction")
+    end)
+
+    if canInvoke ~= true then
+        return false, nil
+    end
+
     local args = table.pack(...)
     local ok, result = pcall(function()
         return remote:InvokeServer(unpackValues(args))
