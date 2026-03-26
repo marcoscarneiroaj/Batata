@@ -56,6 +56,27 @@ function DB:GetCurrentCost(id, ownedCount)
     return generator.Cost * (generator.Growth ^ count)
 end
 
+function DB:GetRemoteCost(id, ownedCount)
+    if not Batata.Util or type(Batata.Util.TryGetRemoteNumber) ~= "function" then
+        return nil
+    end
+
+    local keys = { "Cost", "CurrentCost", "Price", "Value" }
+    local currentCount = math.max(0, math.floor(tonumber(ownedCount) or 0))
+
+    local response = Batata.Util.TryGetRemoteNumber("GetGeneratorCost", keys, id)
+    if response ~= nil then
+        return response
+    end
+
+    response = Batata.Util.TryGetRemoteNumber("GetGeneratorCost", keys, id, currentCount)
+    if response ~= nil then
+        return response
+    end
+
+    return nil
+end
+
 Batata.DB.GeneratorDB = DB
 
 return DB
