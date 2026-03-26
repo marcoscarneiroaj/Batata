@@ -6,13 +6,65 @@ _G.Batata = ROOT.Batata
 
 local Batata = ROOT.Batata
 Batata.Data = Batata.Data or {}
-Batata.Remotes = Batata.Remotes or (Batata.Util and Batata.Util.LoadFile and Batata.Util.LoadFile("remotes.lua"))
 Batata.DB = Batata.DB or {}
-Batata.DB.Inventory = Batata.DB.Inventory or (Batata.Util and Batata.Util.LoadFile and Batata.Util.LoadFile("inventorydb.lua"))
 
 local Data = Batata.Data
-local dataUpdatedRemote = Batata.Remotes.DataUpdated
 local inventoryDb = Batata.DB.Inventory
+
+local function ensureRemoteTable()
+    if type(Batata.Remotes) == "table" and Batata.Remotes.DataUpdated then
+        return Batata.Remotes
+    end
+
+    if Batata.Util and type(Batata.Util.LoadFile) == "function" then
+        local ok, loadedRemotes = pcall(Batata.Util.LoadFile, "remotes.lua")
+        if ok and type(loadedRemotes) == "table" then
+            Batata.Remotes = loadedRemotes
+            return loadedRemotes
+        end
+    end
+
+    Batata.Remotes = Batata.Remotes or {}
+    return Batata.Remotes
+end
+
+local function ensureInventoryDb()
+    if type(Batata.DB.Inventory) == "table" then
+        return Batata.DB.Inventory
+    end
+
+    if Batata.Util and type(Batata.Util.LoadFile) == "function" then
+        local ok, loadedInventoryDb = pcall(Batata.Util.LoadFile, "inventorydb.lua")
+        if ok and type(loadedInventoryDb) == "table" then
+            Batata.DB.Inventory = loadedInventoryDb
+            return loadedInventoryDb
+        end
+    end
+
+    return nil
+end
+
+local function ensureDataUpdatedRemote()
+    local remotes = ensureRemoteTable()
+    local remote = remotes and remotes.DataUpdated
+
+    if remote and remote.OnClientEvent then
+        return remote
+    end
+
+    local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes")
+    remote = remotesFolder and (remotesFolder:FindFirstChild("DataUpdated") or remotesFolder:WaitForChild("DataUpdated"))
+
+    if remote then
+        Batata.Remotes = Batata.Remotes or {}
+        Batata.Remotes.DataUpdated = remote
+    end
+
+    return remote
+end
+
+inventoryDb = ensureInventoryDb()
+local dataUpdatedRemote = ensureDataUpdatedRemote()
 
 local DEBUG_ENABLED = false
 
@@ -167,6 +219,10 @@ end
 
 if Batata.DataConnection and Batata.DataConnection.Connected then
     Batata.DataConnection:Disconnect()
+end
+
+if not dataUpdatedRemote or not dataUpdatedRemote.OnClientEvent then
+    error("DataUpdated remoto ausente")
 end
 
 Batata.DataConnection = dataUpdatedRemote.OnClientEvent:Connect(function(payload)
