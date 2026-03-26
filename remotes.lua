@@ -7,11 +7,17 @@ _G.Batata = ROOT.Batata
 local Batata = ROOT.Batata
 Batata.Remotes = Batata.Remotes or {}
 
-if Batata.Remotes._initialized == true then
+if Batata.Remotes._initialized == true and Batata.Remotes.Folder then
     return Batata.Remotes
 end
 
-local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
+local okRemotesFolder, remotesFolder = pcall(function()
+    return ReplicatedStorage:WaitForChild("Remotes")
+end)
+
+if not okRemotesFolder or remotesFolder == nil then
+    error("pasta ReplicatedStorage.Remotes ausente")
+end
 
 -- true  = remote essencial; espera ele existir com WaitForChild
 -- false = remote opcional; tenta pegar com FindFirstChild
@@ -647,23 +653,37 @@ local REMOTE_CATALOG = {
 local REMOTE_DEFINITIONS = {}
 local REMOTE_METADATA = {}
 
-for groupName, group in pairs(REMOTE_CATALOG) do
-    for remoteName, info in pairs(group) do
-        REMOTE_DEFINITIONS[remoteName] = info.Wait == true
-        REMOTE_METADATA[remoteName] = {
-            Group = groupName,
-            Description = info.Description,
-            Wait = info.Wait == true,
-        }
+for groupName, group in next, REMOTE_CATALOG do
+    if type(group) == "table" then
+        for remoteName, info in next, group do
+            if type(info) == "table" then
+                REMOTE_DEFINITIONS[remoteName] = info.Wait == true
+                REMOTE_METADATA[remoteName] = {
+                    Group = groupName,
+                    Description = info.Description,
+                    Wait = info.Wait == true,
+                }
+            end
+        end
     end
-}
+end
 
 local function getRemote(name, shouldWait)
-    if shouldWait == true then
-        return remotesFolder:WaitForChild(name)
+    if type(name) ~= "string" or name == "" then
+        return nil
     end
 
-    return remotesFolder:FindFirstChild(name)
+    if shouldWait == true then
+        local ok, remote = pcall(function()
+            return remotesFolder:WaitForChild(name)
+        end)
+        return ok and remote or nil
+    end
+
+    local ok, remote = pcall(function()
+        return remotesFolder:FindFirstChild(name)
+    end)
+    return ok and remote or nil
 end
 
 local function cacheRemote(name)
@@ -682,7 +702,7 @@ Batata.Remotes.Catalog = REMOTE_CATALOG
 Batata.Remotes.Definitions = REMOTE_DEFINITIONS
 Batata.Remotes.Metadata = REMOTE_METADATA
 
-for remoteName in pairs(REMOTE_DEFINITIONS) do
+for remoteName in next, REMOTE_DEFINITIONS do
     cacheRemote(remoteName)
 end
 
@@ -693,7 +713,7 @@ function Batata.Remotes:Refresh(name)
         return cacheRemote(name)
     end
 
-    for remoteName in pairs(self.Definitions) do
+    for remoteName in next, self.Definitions do
         cacheRemote(remoteName)
     end
 
