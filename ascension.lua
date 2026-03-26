@@ -13,6 +13,13 @@ local ascensionRemote = Batata.Util.EnsureRemotes().PerformAscension
 local CHECK_DELAY = 1
 local MIN_INTERVAL = 30
 local DEFAULT_BLESSING = "abundance"
+local VALID_BLESSINGS = {
+    golden = true,
+    prestige = true,
+    thrifty = true,
+    collector = true,
+    abundance = true,
+}
 
 local Module = {
     Running = true,
@@ -21,6 +28,7 @@ local Module = {
     LastAscensionAt = 0,
     LastAscensionClock = "--:--:--",
     StartTimesAscended = nil,
+    Blessing = DEFAULT_BLESSING,
 }
 
 local function getNow()
@@ -103,6 +111,15 @@ local function isIntervalReady()
     return (getNow() - Module.LastAscensionAt) >= MIN_INTERVAL
 end
 
+local function normalizeBlessing(value)
+    local blessing = string.lower(tostring(value or DEFAULT_BLESSING))
+    if VALID_BLESSINGS[blessing] == true then
+        return blessing
+    end
+
+    return DEFAULT_BLESSING
+end
+
 function Module:SetEnabled(enabled)
     self.Enabled = enabled == true
 end
@@ -128,6 +145,10 @@ function Module:Toggle()
     return self.Enabled
 end
 
+function Module:SetBlessing(value)
+    self.Blessing = normalizeBlessing(value)
+end
+
 function Module:GetState()
     return {
         Enabled = self.Enabled == true,
@@ -136,7 +157,7 @@ function Module:GetState()
         CurrentPrestigePoints = getCurrentPrestigePoints(),
         RequiredPrestigePoints = getRequiredPrestigePoints(),
         CanAscendNow = canAscendNow(),
-        Blessing = DEFAULT_BLESSING,
+        Blessing = normalizeBlessing(self.Blessing),
         LastAscensionAt = self.LastAscensionAt,
         LastAscensionClock = self.LastAscensionClock,
         SecondsUntilNextTry = math.max(0, MIN_INTERVAL - (getNow() - self.LastAscensionAt)),
@@ -160,7 +181,7 @@ task.spawn(function()
     while Module.Running do
         if Module.Enabled and isIntervalReady() and canAscendNow() then
             local ok = pcall(function()
-                ascensionRemote:FireServer(DEFAULT_BLESSING)
+                ascensionRemote:FireServer(normalizeBlessing(Module.Blessing))
             end)
 
             if ok then
