@@ -1,9 +1,11 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local ROOT = getgenv and getgenv() or _G
 
 local function loadShared()
-    if type(_G.Batata) == "table" and type(_G.Batata.Util) == "table" then
-        return _G.Batata
+    if type(ROOT.Batata) == "table" and type(ROOT.Batata.Util) == "table" then
+        _G.Batata = ROOT.Batata
+        return ROOT.Batata
     end
 
     local candidates = {
@@ -16,7 +18,10 @@ local function loadShared()
     for _, path in ipairs(candidates) do
         local ok, source = pcall(readfile, path)
         if ok and type(source) == "string" and source ~= "" then
-            return loadstring(source, "@" .. path)()
+            local batata = loadstring(source, "@" .. path)()
+            ROOT.Batata = batata
+            _G.Batata = batata
+            return batata
         end
     end
 
