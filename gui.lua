@@ -1257,7 +1257,7 @@ local geneticsHint = Instance.new("TextLabel")
 geneticsHint.BackgroundTransparency = 1
 geneticsHint.Position = UDim2.new(0, 14, 0, 36)
 geneticsHint.Size = UDim2.new(1, -28, 0, 14)
-geneticsHint.Text = "Sem bonus = filtra so raridade | Sem raridade = filtra so bonus."
+geneticsHint.Text = "Raridade funciona como minima | Sem bonus = so raridade | Sem raridade = so bonus."
 geneticsHint.Font = Enum.Font.Gotham
 geneticsHint.TextSize = 10
 geneticsHint.TextColor3 = Color3.fromRGB(138, 149, 177)
