@@ -210,7 +210,7 @@ local moduleDefinitions = {
     { Key = "Notifications", ModuleName = "AutoNotifications", Ensure = ensureNotificationsController, Title = "Auto Avisos", Description = "Fecha toasts de erro, venda e compra.", Page = "Automacao" },
     { Key = "Farm", ModuleName = "AutoFarm", Ensure = ensureFarmController, Title = "Auto Geradores", Description = "Compra e troca o melhor gerador.", Page = "Fazenda" },
     { Key = "Potion", ModuleName = "AutoPotion", Ensure = ensurePotionController, Title = "Auto Pocao", Description = "Mantem as pocoes ativas.", Page = "Pocoes" },
-    { Key = "Genetics", ModuleName = "AutoGenetics", Ensure = ensureGeneticsController, Title = "Auto Genetics", Description = "Rola slot com filtro.", Page = "Genetics", TemporarilyDisabled = true },
+    { Key = "Genetics", ModuleName = "AutoGenetics", Ensure = ensureGeneticsController, Title = "Auto Genetics", Description = "Liga so pela propria aba.", Page = "Genetics", ManualOnly = true },
     { Key = "Upgrade", ModuleName = "AutoUpgrade", Ensure = ensureUpgradeController, Title = "Auto Upgrade", Description = "Compra o melhor upgrade.", Page = "Upgrade" },
     { Key = "Click", ModuleName = "AutoClick", Ensure = ensureClickController, Title = "Auto Click", Description = "Executa clique continuo.", Page = "Automacao" },
     { Key = "Sell", ModuleName = "AutoSell", Ensure = ensureSellController, Title = "Auto Sell", Description = "Vende batatas automaticamente.", Page = "Sell" },
@@ -231,9 +231,10 @@ local getCurrentProfile
 local getModuleState
 local safeEnsure
 local setStartupModules
+local toggleModuleByDefinition
 
-local function isTemporarilyDisabled(definition)
-    return type(definition) == "table" and definition.TemporarilyDisabled == true
+local function isManualOnly(definition)
+    return type(definition) == "table" and definition.ManualOnly == true
 end
 
 local function cloneBooleanMap(source)
@@ -255,7 +256,7 @@ local function buildModuleConfigSnapshot()
     }
 
     for _, definition in ipairs(moduleDefinitions) do
-        if definition.ModuleName and not isTemporarilyDisabled(definition) then
+        if definition.ModuleName and not isManualOnly(definition) then
             local state = getModuleState(definition)
             snapshot[definition.Key] = state and state.Enabled == true or false
         end
@@ -387,7 +388,7 @@ local function applySavedStartupConfig()
     local failedModules = {}
     for _, definition in ipairs(moduleDefinitions) do
         if definition.ModuleName then
-            if isTemporarilyDisabled(definition) then
+            if isManualOnly(definition) then
                 local loadedModule = Batata.Modules[definition.ModuleName]
                 if loadedModule and type(loadedModule.SetEnabled) == "function" then
                     loadedModule:SetEnabled(false)
@@ -527,7 +528,7 @@ local function countEnabledModules()
     local total = 0
 
     for _, definition in ipairs(moduleDefinitions) do
-        if definition.Key ~= "Data" and not isTemporarilyDisabled(definition) then
+        if definition.Key ~= "Data" and not isManualOnly(definition) then
             total = total + 1
             local state = getModuleState(definition)
             if state and state.Enabled == true then
@@ -909,14 +910,14 @@ pages.Pocoes = potionPage
 createPageHeader(principalPage, "Painel Principal", "Visao geral do script e estatisticas principais")
 createPageHeader(automationPage, "Automacao", "Ative ou desative cada modulo individualmente")
 createPageHeader(clickPage, "Auto Click", "Controle do clique continuo")
-createPageHeader(geneticsPage, "Genetics", "Slot, bonus alvo e raridade minima")
+createPageHeader(geneticsPage, "Genetics", "Modulo manual com filtro por slot, raridade e bonus")
 createPageHeader(farmPage, "Geradores", "Controle da compra e troca de geradores")
 createPageHeader(upgradePage, "Upgrade", "Controle de upgrades automaticos")
 createPageHeader(sellPage, "Auto Sell", "Venda automatica de batatas")
 createPageHeader(fusionPage, "Fusao", "Fusao automatica com seguranca")
 createPageHeader(shopPage, "Loja", "Compra da rotacao da loja")
 createPageHeader(digPage, "Dig", "Escavacao por stamina e tiles")
-createPageHeader(prestigePage, "Prestigio", "Prestigio com glitter_potato")
+createPageHeader(prestigePage, "Prestigio", "Prestigio com solar_flare_potato")
 createPageHeader(ascensionPage, "Ascensao", "Ascensao automatica")
 createPageHeader(potionPage, "Pocoes", "Renovacao automatica de buffs")
 
@@ -1080,7 +1081,9 @@ local function createAutomationRow(definition)
 end
 
 for _, definition in ipairs(moduleDefinitions) do
-    createAutomationRow(definition)
+    if not isManualOnly(definition) then
+        createAutomationRow(definition)
+    end
 end
 
 local function createModulePage(page, definition, subtitleText)
@@ -1098,6 +1101,7 @@ local function createModulePage(page, definition, subtitleText)
     description.Parent = controlPanel
 
     moduleStatusLabels[definition.Key] = createInfoLabel(page, 26, 170, 530, 52, definition.Key .. "Status", "Status atual")
+    return controlPanel
 end
 
 createModulePage(farmPage, moduleByKey.Farm, "Compra o melhor gerador disponivel e troca quando um melhor libera.")
@@ -1110,7 +1114,19 @@ createModulePage(digPage, moduleByKey.Dig, "Escava quando a stamina atual estive
 createModulePage(prestigePage, moduleByKey.Prestige, "Equipa solar_flare_potato, prestigia e volta para the_first_potato.")
 createModulePage(ascensionPage, moduleByKey.Ascension, "Usa a blessing escolhida quando os PP atuais batem o custo.")
 createModulePage(potionPage, moduleByKey.Potion, "Renova click, golden, luck, drop chance e production.")
-createModulePage(geneticsPage, moduleByKey.Genetics, "Rola o slot escolhido com filtros configurados.")
+local geneticsControlPanel = createModulePage(geneticsPage, moduleByKey.Genetics, "Liga so por este painel e fica fora do Ligar All.")
+
+local geneticsManualButton = Instance.new("TextButton")
+geneticsManualButton.Size = UDim2.new(0, 148, 0, 34)
+geneticsManualButton.Position = UDim2.new(0, 396, 0, 22)
+geneticsManualButton.BackgroundColor3 = Color3.fromRGB(76, 95, 228)
+geneticsManualButton.BorderSizePixel = 0
+geneticsManualButton.Text = "Ligar Genetics"
+geneticsManualButton.Font = Enum.Font.GothamBold
+geneticsManualButton.TextSize = 12
+geneticsManualButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+geneticsManualButton.Parent = geneticsControlPanel
+corner(geneticsManualButton, 10)
 
 createInfoLabel(farmPage, 26, 256, 530, 52, "FarmExtra", "Alvo atual")
 createInfoLabel(clickPage, 26, 256, 530, 52, "ClickExtra", "Detalhes")
@@ -1197,12 +1213,12 @@ local geneticsScroll = Instance.new("ScrollingFrame")
 geneticsScroll.BackgroundTransparency = 1
 geneticsScroll.Position = UDim2.new(0, 0, 0, 240)
 geneticsScroll.Size = UDim2.new(1, 0, 1, -240)
-geneticsScroll.CanvasSize = UDim2.new(0, 0, 0, 360)
+geneticsScroll.CanvasSize = UDim2.new(0, 0, 0, 460)
 geneticsScroll.ScrollBarThickness = 4
 geneticsScroll.BorderSizePixel = 0
 geneticsScroll.Parent = geneticsPage
 
-local geneticsConfig = createPanel(geneticsScroll, 12, 0, 562, 224, "Configuracao")
+local geneticsConfig = createPanel(geneticsScroll, 12, 0, 562, 300, "Configuracao")
 
 local slotTitle = Instance.new("TextLabel")
 slotTitle.BackgroundTransparency = 1
@@ -1239,32 +1255,51 @@ geneticsRarityBox.Visible = false
 
 local geneticsHint = Instance.new("TextLabel")
 geneticsHint.BackgroundTransparency = 1
-geneticsHint.Position = UDim2.new(0, 14, 0, 196)
+geneticsHint.Position = UDim2.new(0, 14, 0, 36)
 geneticsHint.Size = UDim2.new(1, -28, 0, 14)
-geneticsHint.Text = "Bonus vazio = focar apenas na raridade."
+geneticsHint.Text = "Sem bonus = filtra so raridade | Sem raridade = filtra so bonus."
 geneticsHint.Font = Enum.Font.Gotham
 geneticsHint.TextSize = 10
 geneticsHint.TextColor3 = Color3.fromRGB(138, 149, 177)
 geneticsHint.TextXAlignment = Enum.TextXAlignment.Left
 geneticsHint.Parent = geneticsConfig
 
-createInfoLabel(geneticsScroll, 26, 234, 530, 40, "GeneticsExtra", "Ultimo resultado")
+createInfoLabel(geneticsScroll, 26, 312, 530, 48, "GeneticsExtra", "Ultimo resultado")
 
-local geneticsRarityPanel = createPanel(geneticsConfig, 14, 56, 270, 54, "Raridades")
-local geneticsSlotPanel = createPanel(geneticsConfig, 292, 56, 256, 54, "Slots")
+local geneticsRarityPanel = createPanel(geneticsConfig, 14, 56, 270, 86, "Raridades")
+local geneticsSlotPanel = createPanel(geneticsConfig, 292, 56, 256, 86, "Slots")
 
 local rarityOptions = { "common", "uncommon", "rare", "epic", "legendary", "mythic", "secret" }
+local rarityLabels = {
+    common = "Comum",
+    uncommon = "Incom",
+    rare = "Rare",
+    epic = "Epic",
+    legendary = "Legend",
+    mythic = "Mythic",
+    secret = "Secret",
+}
+
+pickerButtons.rarity_any = createChoiceButton(geneticsRarityPanel, 14, 28, 56, 20, "Sem")
+pickerButtons.rarity_any.TextSize = 10
 for index, rarity in ipairs(rarityOptions) do
-    local button = createChoiceButton(geneticsRarityPanel, 14 + ((index - 1) * 36), 26, 32, 22, string.sub(rarity, 1, 1):upper())
+    local column = (index - 1) % 4
+    local row = math.floor((index - 1) / 4)
+    local button = createChoiceButton(geneticsRarityPanel, 80 + (column * 46), 28 + (row * 24), 42, 20, rarityLabels[rarity] or rarity)
+    button.TextSize = 9
     pickerButtons["rarity_" .. rarity] = button
 end
 
+pickerButtons.slot_any = createChoiceButton(geneticsSlotPanel, 14, 28, 42, 20, "Todos")
+pickerButtons.slot_any.TextSize = 9
 for slotIndex = 1, 8 do
-    local button = createChoiceButton(geneticsSlotPanel, 14 + ((slotIndex - 1) * 32), 26, 28, 22, tostring(slotIndex))
+    local column = (slotIndex - 1) % 4
+    local row = math.floor((slotIndex - 1) / 4)
+    local button = createChoiceButton(geneticsSlotPanel, 66 + (column * 44), 28 + (row * 24), 38, 20, tostring(slotIndex))
     pickerButtons["slot_" .. tostring(slotIndex)] = button
 end
 
-local geneticsEffectsPanel = createPanel(geneticsConfig, 14, 112, 534, 78, "Bonus")
+local geneticsEffectsPanel = createPanel(geneticsConfig, 14, 148, 534, 140, "Bonus")
 local effectOptions = {
     { Id = "PrestigePointBonus", Label = "Prestige PP" },
     { Id = "GeneratorMultiplier", Label = "Generator Mult" },
@@ -1280,10 +1315,13 @@ local effectOptions = {
     { Id = "GoldenConversionBonus", Label = "Golden Conv" },
 }
 
+pickerButtons.effect_any = createChoiceButton(geneticsEffectsPanel, 14, 30, 120, 20, "Sem bonus")
+pickerButtons.effect_any.TextSize = 10
 for index, effectInfo in ipairs(effectOptions) do
-    local column = (index - 1) % 3
-    local row = math.floor((index - 1) / 3)
-    local button = createChoiceButton(geneticsEffectsPanel, 14 + (column * 170), 28 + (row * 24), 160, 20, effectInfo.Label)
+    local displayIndex = index
+    local column = displayIndex % 4
+    local row = math.floor(displayIndex / 4)
+    local button = createChoiceButton(geneticsEffectsPanel, 14 + (column * 128), 30 + (row * 24), 120, 20, effectInfo.Label)
     button.TextSize = 10
     pickerButtons["effect_" .. effectInfo.Id] = button
 end
@@ -1352,17 +1390,27 @@ local function setAllModules(enabled)
 
     for _, definition in ipairs(moduleDefinitions) do
         if definition.ModuleName then
-            if isTemporarilyDisabled(definition) then
+            if isManualOnly(definition) then
                 local loadedModule = Batata.Modules[definition.ModuleName]
                 if loadedModule and type(loadedModule.SetEnabled) == "function" then
                     loadedModule:SetEnabled(false)
                 end
-            else
+            elseif enabled == true then
                 local ok, controller = safeEnsure(definition)
                 if ok and type(controller.SetEnabled) == "function" then
-                    controller:SetEnabled(enabled)
+                    controller:SetEnabled(true)
                 else
                     table.insert(failedModules, definition.Title)
+                end
+            else
+                local module = Batata.Modules[definition.ModuleName]
+                if module and type(module.SetEnabled) == "function" then
+                    module:SetEnabled(false)
+                else
+                    local ok, controller = safeEnsure(definition)
+                    if ok and type(controller.SetEnabled) == "function" then
+                        controller:SetEnabled(false)
+                    end
                 end
             end
         end
@@ -1380,14 +1428,6 @@ end
 setStartupModules = function()
     setAllModules(true)
 
-    local geneticsDefinition = moduleByKey.Genetics
-    if geneticsDefinition and geneticsDefinition.ModuleName then
-        local geneticsModule = Batata.Modules[geneticsDefinition.ModuleName]
-        if geneticsModule and type(geneticsModule.SetEnabled) == "function" then
-            geneticsModule:SetEnabled(false)
-        end
-    end
-
     pausedSnapshot = nil
     scriptPaused = false
 end
@@ -1400,7 +1440,7 @@ local function pauseModules()
             local state = getModuleState(definition)
             pausedSnapshot[definition.ModuleName] = state and state.Enabled == true or false
             local module = Batata.Modules[definition.ModuleName]
-            if module and type(module.SetEnabled) == "function" and not isTemporarilyDisabled(definition) then
+            if module and type(module.SetEnabled) == "function" then
                 module:SetEnabled(false)
             end
         end
@@ -1416,7 +1456,7 @@ local function resumeModules()
     if type(snapshot) == "table" then
         for _, definition in ipairs(moduleDefinitions) do
             if definition.ModuleName then
-                if isTemporarilyDisabled(definition) then
+                if isManualOnly(definition) then
                     local loadedModule = Batata.Modules[definition.ModuleName]
                     if loadedModule and type(loadedModule.SetEnabled) == "function" then
                         loadedModule:SetEnabled(false)
@@ -1512,12 +1552,12 @@ local function refreshGui()
     for _, definition in ipairs(moduleDefinitions) do
         local state = getModuleState(definition)
         local enabled = state and state.Enabled == true or false
-        local statusText = isTemporarilyDisabled(definition) and "Temporariamente desativado"
-            or state and state.LastStatus
+        local statusText = state and state.LastStatus
+            or (isManualOnly(definition) and "Desligado (manual)")
             or (enabled and "Ligado" or "Desligado")
 
         if moduleRows[definition.Key] and moduleRows[definition.Key].SetSwitch then
-            moduleRows[definition.Key].SetSwitch(enabled and not isTemporarilyDisabled(definition))
+            moduleRows[definition.Key].SetSwitch(enabled)
         end
 
         if moduleStatusLabels[definition.Key] then
@@ -1563,10 +1603,34 @@ local function refreshGui()
                 setChoiceButtonState(button, geneticsState.SelectedEffects and geneticsState.SelectedEffects[effectInfo.Id] == true)
             end
         end
-    elseif isTemporarilyDisabled(moduleByKey.Genetics) then
-        infoLabels.GeneticsExtra.Text = "Modulo pausado para reformulacao"
+
+        if pickerButtons.rarity_any then
+            setChoiceButtonState(pickerButtons.rarity_any, not next(geneticsState.SelectedRarities or {}))
+        end
+        if pickerButtons.effect_any then
+            setChoiceButtonState(pickerButtons.effect_any, not next(geneticsState.SelectedEffects or {}))
+        end
+        if pickerButtons.slot_any then
+            local allSelected = type(geneticsState.SelectedSlots) == "table" and #geneticsState.SelectedSlots >= 8
+            setChoiceButtonState(pickerButtons.slot_any, allSelected)
+        end
     else
-        infoLabels.GeneticsExtra.Text = "-"
+        infoLabels.GeneticsExtra.Text = "Configure o filtro e ligue manualmente."
+        if pickerButtons.rarity_any then
+            setChoiceButtonState(pickerButtons.rarity_any, false)
+        end
+        if pickerButtons.effect_any then
+            setChoiceButtonState(pickerButtons.effect_any, false)
+        end
+        if pickerButtons.slot_any then
+            setChoiceButtonState(pickerButtons.slot_any, false)
+        end
+    end
+
+    if geneticsManualButton then
+        local geneticsEnabled = geneticsState and geneticsState.Enabled == true or false
+        geneticsManualButton.Text = geneticsEnabled and "Desligar Genetics" or "Ligar Genetics"
+        geneticsManualButton.BackgroundColor3 = geneticsEnabled and Color3.fromRGB(184, 82, 82) or Color3.fromRGB(76, 95, 228)
     end
 
     local farmState = getModuleState(moduleByKey.Farm)
@@ -1667,41 +1731,49 @@ local function refreshGui()
     end
 end
 
+toggleModuleByDefinition = function(definition)
+    if not definition then
+        return
+    end
+
+    if definition.Key == "Data" then
+        ensureData()
+        return
+    end
+
+    local dataOk = ensureData()
+    if not dataOk then
+        infoLabels.SummaryStatus.Text = "falha ao carregar data.lua"
+        return
+    end
+
+    local ok, controller = safeEnsure(definition)
+    if not ok then
+        infoLabels.SummaryStatus.Text = "falha ao carregar " .. string.lower(definition.Key) .. ".lua"
+        if Batata.LastEnsureModuleError then
+            infoLabels.SummaryModules.Text = tostring(Batata.LastEnsureModuleError)
+        end
+        return
+    end
+
+    if type(controller.Toggle) == "function" then
+        controller:Toggle()
+    elseif type(controller.SetEnabled) == "function" then
+        local state = controller.GetState and controller:GetState() or controller
+        controller:SetEnabled(not (state and state.Enabled == true))
+    end
+end
+
 for _, definition in ipairs(moduleDefinitions) do
     if moduleRows[definition.Key] and moduleRows[definition.Key].Row then
-        local function toggleModule()
-            if isTemporarilyDisabled(definition) then
-                infoLabels.SummaryStatus.Text = "genetics desativada temporariamente"
-                return
-            end
-
-            if definition.Key == "Data" then
-                ensureData()
-                return
-            end
-
-            local dataOk = ensureData()
-            if not dataOk then
-                infoLabels.SummaryStatus.Text = "falha ao carregar data.lua"
-                return
-            end
-
-            local ok, controller = safeEnsure(definition)
-            if not ok then
-                infoLabels.SummaryStatus.Text = "falha ao carregar " .. string.lower(definition.Key) .. ".lua"
-                if Batata.LastEnsureModuleError then
-                    infoLabels.SummaryModules.Text = tostring(Batata.LastEnsureModuleError)
-                end
-                return
-            end
-
-            controller:Toggle()
-        end
-
-        bind(moduleRows[definition.Key].Row.MouseButton1Click, toggleModule)
+        bind(moduleRows[definition.Key].Row.MouseButton1Click, function()
+            toggleModuleByDefinition(definition)
+        end)
 
         if moduleRows[definition.Key].SwitchButton then
-            bind(moduleRows[definition.Key].SwitchButton.MouseButton1Click, toggleModule)
+            bind(moduleRows[definition.Key].SwitchButton.MouseButton1Click, function()
+                toggleModuleByDefinition(definition)
+            end)
         end
     end
 end
@@ -1744,25 +1816,47 @@ for profileName, button in pairs(profileButtons) do
     end)
 end
 
-bind(geneticsSlotBox.FocusLost, function()
-    local controller = Batata.Modules.AutoGenetics
-    if controller and type(controller.SetSelectedSlotsFromString) == "function" then
-        controller:SetSelectedSlotsFromString(geneticsSlotBox.Text)
+local function withGeneticsController(callback)
+    local ok, controller = ensureGeneticsController()
+    if not ok or type(controller) ~= "table" then
+        infoLabels.SummaryStatus.Text = "falha ao carregar genetics.lua"
+        if Batata.LastEnsureModuleError then
+            infoLabels.SummaryModules.Text = tostring(Batata.LastEnsureModuleError)
+        end
+        return
     end
+
+    callback(controller)
+    refreshGui()
+end
+
+bind(geneticsManualButton.MouseButton1Click, function()
+    toggleModuleByDefinition(moduleByKey.Genetics)
+    refreshGui()
+end)
+
+bind(geneticsSlotBox.FocusLost, function()
+    withGeneticsController(function(controller)
+        if type(controller.SetSelectedSlotsFromString) == "function" then
+            controller:SetSelectedSlotsFromString(geneticsSlotBox.Text)
+        end
+    end)
 end)
 
 bind(geneticsEffectBox.FocusLost, function()
-    local controller = Batata.Modules.AutoGenetics
-    if controller and type(controller.SetSelectedEffectsFromString) == "function" then
-        controller:SetSelectedEffectsFromString(geneticsEffectBox.Text)
-    end
+    withGeneticsController(function(controller)
+        if type(controller.SetSelectedEffectsFromString) == "function" then
+            controller:SetSelectedEffectsFromString(geneticsEffectBox.Text)
+        end
+    end)
 end)
 
 bind(geneticsRarityBox.FocusLost, function()
-    local controller = Batata.Modules.AutoGenetics
-    if controller and type(controller.SetSelectedRaritiesFromString) == "function" then
-        controller:SetSelectedRaritiesFromString(geneticsRarityBox.Text)
-    end
+    withGeneticsController(function(controller)
+        if type(controller.SetSelectedRaritiesFromString) == "function" then
+            controller:SetSelectedRaritiesFromString(geneticsRarityBox.Text)
+        end
+    end)
 end)
 
 bind(sellGoldenBox.FocusLost, function()
@@ -1790,50 +1884,83 @@ for _, rarity in ipairs(rarityOptions) do
     local button = pickerButtons["rarity_" .. rarity]
     if button then
         bind(button.MouseButton1Click, function()
-            local controller = Batata.Modules.AutoGenetics
-            if controller and type(controller.SetRarityEnabled) == "function" then
-                local state = controller:GetState()
-                local enabled = state.SelectedRarities and state.SelectedRarities[rarity] == true
-                controller:SetRarityEnabled(rarity, not enabled)
-            end
+            withGeneticsController(function(controller)
+                if type(controller.SetRarityEnabled) == "function" then
+                    local state = controller:GetState()
+                    local enabled = state.SelectedRarities and state.SelectedRarities[rarity] == true
+                    controller:SetRarityEnabled(rarity, not enabled)
+                end
+            end)
         end)
     end
+end
+
+if pickerButtons.rarity_any then
+    bind(pickerButtons.rarity_any.MouseButton1Click, function()
+        withGeneticsController(function(controller)
+            if type(controller.ClearSelectedRarities) == "function" then
+                controller:ClearSelectedRarities()
+            end
+        end)
+    end)
 end
 
 for slotIndex = 1, 8 do
     local button = pickerButtons["slot_" .. tostring(slotIndex)]
     if button then
         bind(button.MouseButton1Click, function()
-            local controller = Batata.Modules.AutoGenetics
-            if controller and type(controller.SetSlotEnabled) == "function" then
-                local state = controller:GetState()
-                local enabled = false
-                if type(state.SelectedSlots) == "table" then
-                    for _, value in ipairs(state.SelectedSlots) do
-                        if tonumber(value) == slotIndex then
-                            enabled = true
-                            break
+            withGeneticsController(function(controller)
+                if type(controller.SetSlotEnabled) == "function" then
+                    local state = controller:GetState()
+                    local enabled = false
+                    if type(state.SelectedSlots) == "table" then
+                        for _, value in ipairs(state.SelectedSlots) do
+                            if tonumber(value) == slotIndex then
+                                enabled = true
+                                break
+                            end
                         end
                     end
+                    controller:SetSlotEnabled(slotIndex, not enabled)
                 end
-                controller:SetSlotEnabled(slotIndex, not enabled)
-            end
+            end)
         end)
     end
+end
+
+if pickerButtons.slot_any then
+    bind(pickerButtons.slot_any.MouseButton1Click, function()
+        withGeneticsController(function(controller)
+            if type(controller.SetSelectedSlotsFromString) == "function" then
+                controller:SetSelectedSlotsFromString("1,2,3,4,5,6,7,8")
+            end
+        end)
+    end)
 end
 
 for _, effectInfo in ipairs(effectOptions) do
     local button = pickerButtons["effect_" .. effectInfo.Id]
     if button then
         bind(button.MouseButton1Click, function()
-            local controller = Batata.Modules.AutoGenetics
-            if controller and type(controller.SetEffectEnabled) == "function" then
-                local state = controller:GetState()
-                local enabled = state.SelectedEffects and state.SelectedEffects[effectInfo.Id] == true
-                controller:SetEffectEnabled(effectInfo.Id, not enabled)
-            end
+            withGeneticsController(function(controller)
+                if type(controller.SetEffectEnabled) == "function" then
+                    local state = controller:GetState()
+                    local enabled = state.SelectedEffects and state.SelectedEffects[effectInfo.Id] == true
+                    controller:SetEffectEnabled(effectInfo.Id, not enabled)
+                end
+            end)
         end)
     end
+end
+
+if pickerButtons.effect_any then
+    bind(pickerButtons.effect_any.MouseButton1Click, function()
+        withGeneticsController(function(controller)
+            if type(controller.ClearSelectedEffects) == "function" then
+                controller:ClearSelectedEffects()
+            end
+        end)
+    end)
 end
 
 for _, blessingInfo in ipairs(ascensionBlessingOptions) do
