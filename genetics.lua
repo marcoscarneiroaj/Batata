@@ -124,13 +124,30 @@ local function hasActiveFilters()
     return hasAnySelectedValues(Module.SelectedRarities) or hasAnySelectedValues(Module.SelectedEffects)
 end
 
+local function getSelectedMinimumRarityRank()
+    local minimumRank = nil
+
+    for rarity, enabled in pairs(Module.SelectedRarities) do
+        if enabled == true then
+            local rank = RARITY_ORDER[string.lower(tostring(rarity))]
+            if rank ~= nil and (minimumRank == nil or rank < minimumRank) then
+                minimumRank = rank
+            end
+        end
+    end
+
+    return minimumRank
+end
+
 local function meetsTarget(result)
     if type(result) ~= "table" then
         return false
     end
 
     if hasAnySelectedValues(Module.SelectedRarities) then
-        if Module.SelectedRarities[string.lower(tostring(result.Rarity or ""))] ~= true then
+        local minimumRank = getSelectedMinimumRarityRank()
+        local resultRank = RARITY_ORDER[string.lower(tostring(result.Rarity or ""))]
+        if minimumRank == nil or resultRank == nil or resultRank < minimumRank then
             return false
         end
     end
