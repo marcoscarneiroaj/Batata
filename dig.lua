@@ -10,7 +10,7 @@ end
 
 local remotes = Batata.Util.EnsureRemotes()
 
-local DIG_DELAY = 5
+local DIG_DELAY = 1
 local DIG_MIN_COST = 5
 local DIG_MAX_TILE = 18
 local RARITY_PRIORITY = {
@@ -126,14 +126,18 @@ end
 
 function Module:SetDelay(value)
     local numberValue = tonumber(value)
-    if numberValue and numberValue >= 5 then
+    if numberValue and numberValue >= 1 then
         self.Delay = numberValue
     end
 end
 
 function Module:ApplyDelayProfile(profile, profileName)
     self.DelayProfile = profileName
-    self.Delay = DIG_DELAY
+    if type(profile) == "table" and tonumber(profile.DigDelay) then
+        self.Delay = math.max(1, tonumber(profile.DigDelay))
+    else
+        self.Delay = DIG_DELAY
+    end
 end
 
 function Module:Toggle()
