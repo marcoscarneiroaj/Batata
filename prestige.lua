@@ -54,7 +54,25 @@ local function getTargetValue()
         return DEFAULT_TARGET
     end
 
-    return target
+    return math.floor(target)
+end
+
+local function getRequiredCashForBase(baseValue)
+    local targetBase = tonumber(baseValue) or 0
+    if targetBase <= 0 then
+        return 0
+    end
+
+    return 2000000 * (3 ^ math.max(0, targetBase - 1))
+end
+
+local function getCurrentCash()
+    local stats = getStats()
+    if type(stats) ~= "table" then
+        return 0
+    end
+
+    return tonumber(stats.Cash) or 0
 end
 
 local function getPotentialPrestigePoints()
@@ -111,7 +129,7 @@ local function canPrestigeNow()
         return true
     end
 
-    return getPotentialPrestigePoints() >= targetValue
+    return getCurrentCash() >= getRequiredCashForBase(targetValue)
 end
 
 local function isIntervalReady()
@@ -162,6 +180,8 @@ function Module:GetState()
         TargetValue = getTargetValue(),
         LastPrestigeAt = self.LastPrestigeAt,
         LastPrestigeClock = self.LastPrestigeClock,
+        CurrentCash = getCurrentCash(),
+        RequiredCash = getRequiredCashForBase(getTargetValue()),
         PotentialPrestigePoints = getPotentialPrestigePoints(),
         SecondsUntilNextTry = math.max(0, MIN_INTERVAL - (getNow() - self.LastPrestigeAt)),
         SessionPrestiges = sessionPrestiges,
