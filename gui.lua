@@ -963,7 +963,7 @@ profileButtons.medio = createChoiceButton(summaryPanel, 134, 86, 100, 20, "Medio
 profileButtons.maximo = createChoiceButton(summaryPanel, 242, 86, 100, 20, "Maximo")
 
 local allOnButton = Instance.new("TextButton")
-allOnButton.Size = UDim2.new(0, 174, 0, 40)
+allOnButton.Size = UDim2.new(0, 132, 0, 40)
 allOnButton.Position = UDim2.new(0, 12, 0, 398)
 allOnButton.BackgroundColor3 = Color3.fromRGB(58, 160, 103)
 allOnButton.BorderSizePixel = 0
@@ -975,8 +975,8 @@ allOnButton.Parent = principalPage
 corner(allOnButton, 12)
 
 local allOffButton = Instance.new("TextButton")
-allOffButton.Size = UDim2.new(0, 174, 0, 40)
-allOffButton.Position = UDim2.new(0, 200, 0, 398)
+allOffButton.Size = UDim2.new(0, 132, 0, 40)
+allOffButton.Position = UDim2.new(0, 152, 0, 398)
 allOffButton.BackgroundColor3 = Color3.fromRGB(184, 82, 82)
 allOffButton.BorderSizePixel = 0
 allOffButton.Text = "Desligar All"
@@ -986,9 +986,21 @@ allOffButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 allOffButton.Parent = principalPage
 corner(allOffButton, 12)
 
+local saveConfigButton = Instance.new("TextButton")
+saveConfigButton.Size = UDim2.new(0, 132, 0, 40)
+saveConfigButton.Position = UDim2.new(0, 292, 0, 398)
+saveConfigButton.BackgroundColor3 = Color3.fromRGB(67, 109, 196)
+saveConfigButton.BorderSizePixel = 0
+saveConfigButton.Text = "Salvar Config"
+saveConfigButton.Font = Enum.Font.GothamBold
+saveConfigButton.TextSize = 13
+saveConfigButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+saveConfigButton.Parent = principalPage
+corner(saveConfigButton, 12)
+
 local reconnectDataButton = Instance.new("TextButton")
-reconnectDataButton.Size = UDim2.new(0, 174, 0, 40)
-reconnectDataButton.Position = UDim2.new(0, 388, 0, 398)
+reconnectDataButton.Size = UDim2.new(0, 132, 0, 40)
+reconnectDataButton.Position = UDim2.new(0, 432, 0, 398)
 reconnectDataButton.BackgroundColor3 = Color3.fromRGB(69, 79, 119)
 reconnectDataButton.BorderSizePixel = 0
 reconnectDataButton.Text = "Reconectar Data"
@@ -1711,6 +1723,17 @@ end)
 bind(allOffButton.MouseButton1Click, function()
     setAllModules(false)
     saveLocalConfig()
+end)
+
+bind(saveConfigButton.MouseButton1Click, function()
+    local saved = saveLocalConfig()
+    if saved then
+        infoLabels.SummaryStatus.Text = "config salva neste pc"
+        infoLabels.SummaryModules.Text = tostring(Batata.LocalConfigPath or "batata/profile.json")
+    else
+        infoLabels.SummaryStatus.Text = "falha ao salvar config"
+        infoLabels.SummaryModules.Text = tostring(Batata.LastConfigError or "erro desconhecido")
+    end
 end)
 
 bind(reconnectDataButton.MouseButton1Click, function()
