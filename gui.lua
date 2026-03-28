@@ -1135,7 +1135,6 @@ createInfoLabel(sellPage, 26, 256, 530, 52, "SellExtra", "Detalhes")
 createInfoLabel(fusionPage, 26, 256, 530, 52, "FusionExtra", "Detalhes")
 createInfoLabel(shopPage, 26, 256, 530, 52, "ShopExtra", "Detalhes")
 createInfoLabel(digPage, 26, 256, 530, 52, "DigExtra", "Detalhes")
-createInfoLabel(prestigePage, 26, 256, 530, 52, "PrestigeExtra", "Detalhes")
 createInfoLabel(ascensionPage, 26, 256, 530, 52, "AscensionExtra", "Detalhes")
 createInfoLabel(potionPage, 26, 256, 530, 52, "PotionExtra", "Detalhes")
 
@@ -1171,11 +1170,28 @@ local sellGoldenBox = createInput(sellConfigPanel, 430, 34, 110, "2")
 local sellCommonBox = createInput(sellConfigPanel, 430, 80, 110, "0")
 local sellDelayBox = createInput(sellConfigPanel, 430, 126, 110, "1")
 
-local prestigeStatsPanel = createPanel(prestigePage, 12, 256, 562, 168, "Sessao")
-createInfoLabel(prestigeStatsPanel, 14, 38, 250, 20, "PrestigeCount", "Prestigios desde o inicio")
-createInfoLabel(prestigeStatsPanel, 290, 38, 250, 20, "PrestigePointsSession", "PP total desde o inicio")
-createInfoLabel(prestigeStatsPanel, 14, 92, 250, 20, "PrestigeLastClock", "Horario do ultimo prestigio")
-createInfoLabel(prestigeStatsPanel, 290, 92, 250, 20, "PrestigeWait", "Tempo para nova tentativa")
+local prestigeConfigPanel = createPanel(prestigePage, 12, 256, 562, 76, "Base alvo")
+
+local prestigeBaseTitle = Instance.new("TextLabel")
+prestigeBaseTitle.BackgroundTransparency = 1
+prestigeBaseTitle.Position = UDim2.new(0, 14, 0, 36)
+prestigeBaseTitle.Size = UDim2.new(0, 280, 0, 18)
+prestigeBaseTitle.Text = "0 = prestigia assim que puder | 1,2,3... = base desejada"
+prestigeBaseTitle.Font = Enum.Font.Gotham
+prestigeBaseTitle.TextSize = 10
+prestigeBaseTitle.TextColor3 = Color3.fromRGB(138, 149, 177)
+prestigeBaseTitle.TextXAlignment = Enum.TextXAlignment.Left
+prestigeBaseTitle.Parent = prestigeConfigPanel
+
+local prestigeBaseBox = createInput(prestigeConfigPanel, 430, 22, 110, "0")
+
+createInfoLabel(prestigeConfigPanel, 14, 50, 400, 14, "PrestigeExtra", "Detalhes")
+
+local prestigeStatsPanel = createPanel(prestigePage, 12, 344, 562, 80, "Sessao")
+createInfoLabel(prestigeStatsPanel, 14, 34, 250, 16, "PrestigeCount", "Prestigios desde o inicio")
+createInfoLabel(prestigeStatsPanel, 290, 34, 250, 16, "PrestigePointsSession", "PP total desde o inicio")
+createInfoLabel(prestigeStatsPanel, 14, 56, 250, 16, "PrestigeLastClock", "Horario do ultimo prestigio")
+createInfoLabel(prestigeStatsPanel, 290, 56, 250, 16, "PrestigeWait", "Tempo para nova tentativa")
 
 local ascensionBlessingPanel = createPanel(ascensionPage, 12, 256, 562, 76, "Blessing")
 local ascensionBlessingHint = Instance.new("TextLabel")
@@ -1685,14 +1701,18 @@ local function refreshGui()
     local prestigeState = getModuleState(moduleByKey.Prestige)
     local stats = Batata.Data and Batata.Data.Stats or nil
     infoLabels.PrestigeExtra.Text = string.format(
-        "Potential PP %s | Alvo %s",
-        formatNumber(stats and stats.PotentialPrestigePoints or 0),
+        "Cash %s / %s | Base alvo %s",
+        formatNumber(prestigeState and prestigeState.CurrentCash or (stats and stats.Cash or 0)),
+        formatNumber(prestigeState and prestigeState.RequiredCash or 0),
         tostring(prestigeState and prestigeState.TargetValue or 0)
     )
     infoLabels.PrestigeCount.Text = tostring(prestigeState and prestigeState.SessionPrestiges or 0)
     infoLabels.PrestigePointsSession.Text = formatNumber(prestigeState and prestigeState.SessionPrestigePoints or 0)
     infoLabels.PrestigeLastClock.Text = tostring(prestigeState and prestigeState.LastPrestigeClock or "--:--:--")
     infoLabels.PrestigeWait.Text = tostring(math.floor(tonumber(prestigeState and prestigeState.SecondsUntilNextTry or 0))) .. "s"
+    if prestigeState and not prestigeBaseBox:IsFocused() then
+        prestigeBaseBox.Text = tostring(prestigeState.TargetValue or 0)
+    end
 
     local ascensionState = getModuleState(moduleByKey.Ascension)
     infoLabels.AscensionExtra.Text = string.format(
@@ -1877,6 +1897,14 @@ bind(sellDelayBox.FocusLost, function()
     local controller = Batata.Modules.AutoSell
     if controller and type(controller.SetDelay) == "function" then
         controller:SetDelay(sellDelayBox.Text)
+    end
+end)
+
+bind(prestigeBaseBox.FocusLost, function()
+    local ok, controller = ensurePrestigeController()
+    if ok and type(controller.SetTargetValue) == "function" then
+        controller:SetTargetValue(prestigeBaseBox.Text)
+        refreshGui()
     end
 end)
 
