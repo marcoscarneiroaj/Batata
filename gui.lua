@@ -1696,7 +1696,6 @@ for _, definition in ipairs(moduleDefinitions) do
             end
 
             controller:Toggle()
-            saveLocalConfig()
         end
 
         bind(moduleRows[definition.Key].Row.MouseButton1Click, toggleModule)
@@ -1717,12 +1716,10 @@ end)
 
 bind(allOnButton.MouseButton1Click, function()
     setAllModules(true)
-    saveLocalConfig()
 end)
 
 bind(allOffButton.MouseButton1Click, function()
     setAllModules(false)
-    saveLocalConfig()
 end)
 
 bind(saveConfigButton.MouseButton1Click, function()
@@ -1743,7 +1740,6 @@ end)
 for profileName, button in pairs(profileButtons) do
     bind(button.MouseButton1Click, function()
         Batata.Util.SetDelayProfile(profileName)
-        saveLocalConfig()
         refreshGui()
     end)
 end
@@ -1774,7 +1770,6 @@ bind(sellGoldenBox.FocusLost, function()
     if controller and type(controller.SetGoldenMinPrice) == "function" then
         controller:SetGoldenMinPrice(sellGoldenBox.Text)
     end
-    saveLocalConfig()
 end)
 
 bind(sellCommonBox.FocusLost, function()
@@ -1782,7 +1777,6 @@ bind(sellCommonBox.FocusLost, function()
     if controller and type(controller.SetCommonMinPrice) == "function" then
         controller:SetCommonMinPrice(sellCommonBox.Text)
     end
-    saveLocalConfig()
 end)
 
 bind(sellDelayBox.FocusLost, function()
@@ -1790,7 +1784,6 @@ bind(sellDelayBox.FocusLost, function()
     if controller and type(controller.SetDelay) == "function" then
         controller:SetDelay(sellDelayBox.Text)
     end
-    saveLocalConfig()
 end)
 
 for _, rarity in ipairs(rarityOptions) do
@@ -1850,7 +1843,6 @@ for _, blessingInfo in ipairs(ascensionBlessingOptions) do
             local ok, controller = ensureAscensionController()
             if ok and type(controller.SetBlessing) == "function" then
                 controller:SetBlessing(blessingInfo.Id)
-                saveLocalConfig()
                 refreshGui()
             end
         end)
@@ -1866,7 +1858,6 @@ for _, potionInfo in ipairs(potionOptions) do
                 local state = controller:GetState()
                 local enabled = state.SelectedPotions and state.SelectedPotions[potionInfo.ItemId] == true
                 controller:SetPotionEnabled(potionInfo.ItemId, not enabled)
-                saveLocalConfig()
             end
         end)
     end
@@ -1898,7 +1889,7 @@ bind(UserInputService.InputBegan, function(input, gameProcessed)
 
     if input.KeyCode == Enum.KeyCode.End then
         if scriptPaused then
-            setAllModules(true)
+            applySavedStartupConfig()
         else
             setAllModules(false)
         end
