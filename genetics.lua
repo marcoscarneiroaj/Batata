@@ -120,19 +120,23 @@ local function hasAnySelectedValues(tbl)
     return false
 end
 
+local function hasActiveFilters()
+    return hasAnySelectedValues(Module.SelectedRarities) or hasAnySelectedValues(Module.SelectedEffects)
+end
+
 local function meetsTarget(result)
     if type(result) ~= "table" then
         return false
     end
 
-    if hasAnySelectedValues(Module.SelectedEffects) then
-        if Module.SelectedEffects[tostring(result.EffectType)] ~= true then
+    if hasAnySelectedValues(Module.SelectedRarities) then
+        if Module.SelectedRarities[string.lower(tostring(result.Rarity or ""))] ~= true then
             return false
         end
     end
 
-    if hasAnySelectedValues(Module.SelectedRarities) then
-        if Module.SelectedRarities[string.lower(tostring(result.Rarity or ""))] ~= true then
+    if hasAnySelectedValues(Module.SelectedEffects) then
+        if Module.SelectedEffects[tostring(result.EffectType)] ~= true then
             return false
         end
     end
@@ -264,6 +268,10 @@ function Module:SetEffectEnabled(effectType, enabled)
     self.SelectedEffects[effectType] = enabled == true
 end
 
+function Module:ClearSelectedEffects()
+    self.SelectedEffects = {}
+end
+
 function Module:SetTargetRarity(rarity)
     self.SelectedRarities = {}
     local clean = string.lower(tostring(rarity or ""))
@@ -291,6 +299,10 @@ function Module:SetRarityEnabled(rarity, enabled)
     self.SelectedRarities[key] = enabled == true
 end
 
+function Module:ClearSelectedRarities()
+    self.SelectedRarities = {}
+end
+
 function Module:GetState()
     local slotIndex, currentSlot = findSlotToRoll()
 
@@ -303,6 +315,7 @@ function Module:GetState()
         SelectedSlots = self.SelectedSlots,
         SelectedEffects = self.SelectedEffects,
         SelectedRarities = self.SelectedRarities,
+        HasActiveFilters = hasActiveFilters(),
         LastResult = self.LastResult,
         LastStatus = self.LastStatus,
         CurrentSlot = currentSlot,
@@ -353,6 +366,8 @@ task.spawn(function()
 
             if not rollRemote then
                 Module.LastStatus = "Remote ausente"
+            elseif not hasActiveFilters() then
+                Module.LastStatus = "Escolha raridade ou bonus"
             elseif not hasCurrencyItem() then
                 Module.LastStatus = "Sem potato_eyes"
             elseif allSelectedSlotsMeetTarget() then
