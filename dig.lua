@@ -33,6 +33,7 @@ local Module = {
     LastTileTried = nil,
     LastResult = nil,
     LastStatus = "Aguardando dados",
+    LastRoundSignature = nil,
 }
 
 local connections = {}
@@ -71,6 +72,35 @@ local function getRarityPriority(value)
     return RARITY_PRIORITY[normalizeRarity(value)] or 0
 end
 
+local function formatPrizeTiles()
+    if type(Module.PrizeTiles) ~= "table" or #Module.PrizeTiles == 0 then
+        return "nenhum"
+    end
+
+    local parts = {}
+    for _, info in ipairs(Module.PrizeTiles) do
+        table.insert(parts, string.format("slot=%s raridade=%s", tostring(info.Tile), tostring(info.Rarity)))
+    end
+
+    return table.concat(parts, " | ")
+end
+
+local function getRoundSignature()
+    return formatPrizeTiles()
+end
+
+local function appendDigLog(message)
+    if not (Batata.Util and type(Batata.Util.AppendLogLine) == "function") then
+        return
+    end
+
+    local line = string.format("[%s] %s", Batata.Util.GetLocalDateTime(), tostring(message or ""))
+    local ok, err = Batata.Util.AppendLogLine(Batata.LogPaths.Dig, line)
+    if ok ~= true then
+        warn("[BatataDig] falha ao salvar log: " .. tostring(err))
+    end
+end
+
 local function setPrizeTiles(prizeTiles)
     Module.PrizeTiles = {}
 
@@ -105,10 +135,10 @@ end
 
 local function chooseTargetTile()
     if #Module.PrizeTiles > 0 then
-        return Module.PrizeTiles[1].Tile
+        return Module.PrizeTiles[1].Tile, Module.PrizeTiles[1]
     end
 
-    return chooseRandomTile()
+    return chooseRandomTile(), nil
 end
 
 local function canDigNow()
@@ -200,6 +230,19 @@ if roundInfoRemote and roundInfoRemote.OnClientEvent then
             setPrizeTiles(nil)
             Module.LastStatus = "Sem premio revelado"
         end
+
+        local signature = getRoundSignature()
+        if signature ~= Module.LastRoundSignature then
+            Module.LastRoundSignature = signature
+            appendDigLog(
+                string.format(
+                    "rodada revelada | stamina=%s/%s | premios=%s",
+                    tostring(math.floor(tonumber(Module.StaminaCurrent or 0))),
+                    tostring(math.floor(tonumber(Module.StaminaMax or 0))),
+                    signature
+                )
+            )
+        end
     end))
 end
 
@@ -212,8 +255,21 @@ if resultRemote and resultRemote.OnClientEvent then
 
         Module.LastResult = payload
 
+        local itemData = type(payload.Item) == "table" and payload.Item or nil
+        appendDigLog(
+            string.format(
+                "resultado | tile=%s | sucesso=%s | round_over=%s | item=%s | raridade=%s",
+                tostring(payload.SquareIndex or Module.LastTileTried or "-"),
+                tostring(payload.Success == true),
+                tostring(payload.RoundOver == true),
+                tostring(itemData and (itemData.Id or itemData.Name) or "nenhum"),
+                tostring(itemData and itemData.Rarity or "-")
+            )
+        )
+
         if payload.RoundOver == true then
             setPrizeTiles(nil)
+            Module.LastRoundSignature = nil
         end
 
         if payload.Success == true then
@@ -236,9 +292,20 @@ task.spawn(function()
             elseif not canDigNow() then
                 Module.LastStatus = "Sem stamina"
             else
-                local tile = chooseTargetTile()
+                local tile, selectedPrize = chooseTargetTile()
                 Module.LastTileTried = tile
                 Module.LastStatus = #Module.PrizeTiles > 0 and "Escavando premio" or "Escavando aleatorio"
+                appendDigLog(
+                    string.format(
+                        "tentativa | tile_escolhido=%s | origem=%s | raridade_alvo=%s | premios=%s | stamina=%s/%s",
+                        tostring(tile),
+                        selectedPrize and "premio" or "aleatorio",
+                        tostring(selectedPrize and selectedPrize.Rarity or "-"),
+                        formatPrizeTiles(),
+                        tostring(math.floor(tonumber(Module.StaminaCurrent or 0))),
+                        tostring(math.floor(tonumber(Module.StaminaMax or 0)))
+                    )
+                )
 
                 pcall(function()
                     digRemote:FireServer(tile)
