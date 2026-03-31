@@ -9,6 +9,7 @@ if Batata.Modules.AutoAscension then
 end
 
 local ascensionRemote = Batata.Util.EnsureRemotes().PerformAscension
+local ascensionCompleteRemote = Batata.Util.EnsureRemotes():Get("AscensionComplete")
 
 local CHECK_DELAY = 1
 local MIN_INTERVAL = 30
@@ -29,7 +30,22 @@ local Module = {
     LastAscensionClock = "--:--:--",
     StartTimesAscended = nil,
     Blessing = DEFAULT_BLESSING,
+    LastAttemptRequiredPrestigePoints = 0,
+    LastAttemptCurrentPrestigePoints = 0,
+    LastAttemptBlessing = DEFAULT_BLESSING,
 }
+
+local connections = {}
+
+local function disconnectAll()
+    for _, connection in ipairs(connections) do
+        if connection and connection.Disconnect then
+            connection:Disconnect()
+        end
+    end
+
+    table.clear(connections)
+end
 
 local function getNow()
     return os.clock()
@@ -170,9 +186,35 @@ end
 function Module:Stop()
     self.Running = false
     self.Enabled = false
+    disconnectAll()
     if Batata.Modules.AutoAscension == self then
         Batata.Modules.AutoAscension = nil
     end
+end
+
+local function logAscension()
+    if not (Batata.Util and type(Batata.Util.AppendLogLine) == "function") then
+        return
+    end
+
+    local line = string.format(
+        "[%s] pp_necessario=%s | pp_atual=%s | blessing=%s",
+        Batata.Util.GetLocalDateTime(),
+        tostring(math.floor(tonumber(Module.LastAttemptRequiredPrestigePoints) or 0)),
+        tostring(math.floor(tonumber(Module.LastAttemptCurrentPrestigePoints) or 0)),
+        tostring(normalizeBlessing(Module.LastAttemptBlessing or Module.Blessing))
+    )
+
+    local ok, err = Batata.Util.AppendLogLine(Batata.LogPaths.Ascension, line)
+    if ok ~= true then
+        warn("[BatataAscension] falha ao salvar log: " .. tostring(err))
+    end
+end
+
+if ascensionCompleteRemote and ascensionCompleteRemote.OnClientEvent then
+    table.insert(connections, ascensionCompleteRemote.OnClientEvent:Connect(function()
+        logAscension()
+    end))
 end
 
 Batata.Util.ApplyCurrentDelayProfileToModule(Module)
@@ -180,6 +222,9 @@ Batata.Util.ApplyCurrentDelayProfileToModule(Module)
 task.spawn(function()
     while Module.Running do
         if Module.Enabled and isIntervalReady() and canAscendNow() then
+            Module.LastAttemptRequiredPrestigePoints = getRequiredPrestigePoints()
+            Module.LastAttemptCurrentPrestigePoints = getCurrentPrestigePoints()
+            Module.LastAttemptBlessing = normalizeBlessing(Module.Blessing)
             local ok = pcall(function()
                 ascensionRemote:FireServer(normalizeBlessing(Module.Blessing))
             end)
