@@ -33,6 +33,7 @@ local Module = {
     CycleStartedAt = Batata.Util and Batata.Util.GetRuntimeSeconds and Batata.Util.GetRuntimeSeconds() or os.clock(),
     LastAttemptPotentialPP = 0,
     LastAttemptRequiredCash = 0,
+    LastAttemptCash = 0,
 }
 
 local connections = {}
@@ -80,6 +81,27 @@ local function getRequiredCashForBase(baseValue)
     end
 
     return 2000000 * (3 ^ math.max(0, targetBase - 1))
+end
+
+local function getBaseFromCash(cashValue)
+    local cash = tonumber(cashValue) or 0
+    if cash < 2000000 then
+        return 0
+    end
+
+    local base = 1
+    local requiredCash = 2000000
+
+    while cash >= (requiredCash * 3) do
+        requiredCash = requiredCash * 3
+        base = base + 1
+
+        if base >= 1000 then
+            break
+        end
+    end
+
+    return base
 end
 
 local function getCurrentCash()
@@ -235,13 +257,12 @@ local function logPrestige(payload)
     Module.CycleStartedAt = nowRuntime
 
     local line = string.format(
-        "[%s] pp_ganho=%s | levou=%s | base_alvo=%s | cash_necessario=%s | pp_potencial=%s",
+        "[%s] pp=%s | levou=%s | base_alvo=%s | base=%s",
         Batata.Util.GetLocalDateTime(),
         tostring(gainedPoints),
         Batata.Util.FormatDuration(elapsedSeconds),
         tostring(getTargetValue()),
-        tostring(math.floor(getRequiredCashForBase(getTargetValue()))),
-        tostring(math.floor(tonumber(Module.LastAttemptPotentialPP) or 0))
+        tostring(getBaseFromCash(Module.LastAttemptCash))
     )
 
     local ok, err = Batata.Util.AppendLogLine(Batata.LogPaths.Prestige, line)
@@ -263,6 +284,7 @@ task.spawn(function()
         if Module.Enabled and isIntervalReady() and canPrestigeNow() then
             Module.LastAttemptPotentialPP = getPotentialPrestigePoints()
             Module.LastAttemptRequiredCash = getRequiredCashForBase(getTargetValue())
+            Module.LastAttemptCash = getCurrentCash()
             local ok = pcall(function()
                 if equipPotatoRemote then
                     equipPotatoRemote:FireServer(PRESTIGE_POTATO)
