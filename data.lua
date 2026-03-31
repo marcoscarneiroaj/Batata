@@ -192,6 +192,15 @@ local function rebuildDerivedData()
     Data.Inventory = buildCategorizedInventory()
 end
 
+local function exportPotatoInventory()
+    if Batata.Util and type(Batata.Util.SavePotatoInventorySnapshot) == "function" then
+        local ok, err = Batata.Util.SavePotatoInventorySnapshot(Data.PotatoInventory, Data.LockedPotatoes)
+        if ok ~= true and err ~= "sem alteracoes" then
+            warn("[BatataData] falha ao exportar inventario de batatas: " .. tostring(err))
+        end
+    end
+end
+
 local function updateData(payload)
     if type(payload) ~= "table" then
         return
@@ -227,6 +236,7 @@ local function updateData(payload)
 
     if updatedInventory then
         debugPrint("Inventario/tabelas de inventario atualizados")
+        exportPotatoInventory()
     end
 end
 
