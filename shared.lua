@@ -57,6 +57,7 @@ Batata.LogPaths = Batata.LogPaths or {
     InventoryText = "batata/logs/potatoes.txt",
     Prestige = "batata/logs/prestige.log",
     Ascension = "batata/logs/ascension.log",
+    Dig = "batata/logs/dig.log",
 }
 Batata.LocalConfig = Batata.LocalConfig or nil
 Batata.LocalConfigLoaded = Batata.LocalConfigLoaded or false
