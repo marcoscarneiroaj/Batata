@@ -133,6 +133,14 @@ local function appendDigLog(message)
     end
 end
 
+local function hasRealItem(itemData)
+    if type(itemData) ~= "table" then
+        return false
+    end
+
+    return itemData.Id ~= nil or itemData.Name ~= nil
+end
+
 local function clearPendingChoice()
     Module.PendingResult = false
     Module.PendingChoiceTile = nil
@@ -297,7 +305,7 @@ if resultRemote and resultRemote.OnClientEvent then
         Module.PendingResult = false
 
         local itemData = type(payload.Item) == "table" and payload.Item or nil
-        if Module.PendingRoundSummary then
+        if Module.PendingRoundSummary and hasRealItem(itemData) then
             appendDigLog(
                 string.format(
                     "%s | escolhido=%s | %s | item=%s | raridade_item=%s | sucesso=%s",
