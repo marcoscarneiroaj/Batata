@@ -34,6 +34,10 @@ local Module = {
     LastResult = nil,
     LastStatus = "Aguardando dados",
     LastRoundSignature = nil,
+    PendingResult = false,
+    PendingChoiceTile = nil,
+    PendingChoiceRarity = nil,
+    PendingRoundSummary = nil,
 }
 
 local connections = {}
@@ -72,14 +76,42 @@ local function getRarityPriority(value)
     return RARITY_PRIORITY[normalizeRarity(value)] or 0
 end
 
+local function getRarityLabel(value)
+    local rarity = normalizeRarity(value)
+    local labels = {
+        common = "comum",
+        uncommon = "incomum",
+        rare = "rare",
+        epic = "epic",
+        legendary = "lendario",
+        mythic = "mythic",
+        secret = "secret",
+    }
+
+    return labels[rarity] or rarity
+end
+
 local function formatPrizeTiles()
     if type(Module.PrizeTiles) ~= "table" or #Module.PrizeTiles == 0 then
         return "nenhum"
     end
 
     local parts = {}
+    local items = {}
+
     for _, info in ipairs(Module.PrizeTiles) do
-        table.insert(parts, string.format("slot=%s raridade=%s", tostring(info.Tile), tostring(info.Rarity)))
+        table.insert(items, {
+            Tile = tonumber(info.Tile) or 0,
+            Rarity = getRarityLabel(info.Rarity),
+        })
+    end
+
+    table.sort(items, function(left, right)
+        return left.Tile < right.Tile
+    end)
+
+    for _, info in ipairs(items) do
+        table.insert(parts, string.format("%s=%s", tostring(info.Tile), tostring(info.Rarity)))
     end
 
     return table.concat(parts, " | ")
@@ -99,6 +131,13 @@ local function appendDigLog(message)
     if ok ~= true then
         warn("[BatataDig] falha ao salvar log: " .. tostring(err))
     end
+end
+
+local function clearPendingChoice()
+    Module.PendingResult = false
+    Module.PendingChoiceTile = nil
+    Module.PendingChoiceRarity = nil
+    Module.PendingRoundSummary = nil
 end
 
 local function setPrizeTiles(prizeTiles)
@@ -229,10 +268,11 @@ if roundInfoRemote and roundInfoRemote.OnClientEvent then
         else
             setPrizeTiles(nil)
             Module.LastStatus = "Sem premio revelado"
+            clearPendingChoice()
         end
 
         local signature = getRoundSignature()
-        if signature ~= Module.LastRoundSignature then
+        if payload.HasPrize == true and signature ~= Module.LastRoundSignature then
             Module.LastRoundSignature = signature
             appendDigLog(
                 string.format(
@@ -254,28 +294,36 @@ if resultRemote and resultRemote.OnClientEvent then
         end
 
         Module.LastResult = payload
+        Module.PendingResult = false
 
         local itemData = type(payload.Item) == "table" and payload.Item or nil
-        appendDigLog(
-            string.format(
-                "resultado | tile=%s | sucesso=%s | round_over=%s | item=%s | raridade=%s",
-                tostring(payload.SquareIndex or Module.LastTileTried or "-"),
-                tostring(payload.Success == true),
-                tostring(payload.RoundOver == true),
-                tostring(itemData and (itemData.Id or itemData.Name) or "nenhum"),
-                tostring(itemData and itemData.Rarity or "-")
+        if Module.PendingRoundSummary then
+            appendDigLog(
+                string.format(
+                    "%s | escolhido=%s | %s | item=%s | raridade_item=%s | sucesso=%s",
+                    tostring(Module.PendingRoundSummary),
+                    tostring(Module.PendingChoiceTile or payload.SquareIndex or "-"),
+                    tostring(Module.PendingChoiceRarity or "-"),
+                    tostring(itemData and (itemData.Id or itemData.Name) or "nenhum"),
+                    tostring(itemData and getRarityLabel(itemData.Rarity) or "-"),
+                    tostring(payload.Success == true)
+                )
             )
-        )
+        end
 
         if payload.RoundOver == true then
             setPrizeTiles(nil)
             Module.LastRoundSignature = nil
+            clearPendingChoice()
         end
 
         if payload.Success == true then
             Module.LastStatus = "Escavacao concluida"
         else
             Module.LastStatus = "Tentativa concluida"
+            if payload.RoundOver ~= true then
+                clearPendingChoice()
+            end
         end
     end))
 end
@@ -291,21 +339,16 @@ task.spawn(function()
                 Module.LastStatus = "Remote ausente"
             elseif not canDigNow() then
                 Module.LastStatus = "Sem stamina"
+            elseif Module.PendingResult == true then
+                Module.LastStatus = "Aguardando resultado"
             else
                 local tile, selectedPrize = chooseTargetTile()
                 Module.LastTileTried = tile
                 Module.LastStatus = #Module.PrizeTiles > 0 and "Escavando premio" or "Escavando aleatorio"
-                appendDigLog(
-                    string.format(
-                        "tentativa | tile_escolhido=%s | origem=%s | raridade_alvo=%s | premios=%s | stamina=%s/%s",
-                        tostring(tile),
-                        selectedPrize and "premio" or "aleatorio",
-                        tostring(selectedPrize and selectedPrize.Rarity or "-"),
-                        formatPrizeTiles(),
-                        tostring(math.floor(tonumber(Module.StaminaCurrent or 0))),
-                        tostring(math.floor(tonumber(Module.StaminaMax or 0)))
-                    )
-                )
+                Module.PendingResult = true
+                Module.PendingChoiceTile = tile
+                Module.PendingChoiceRarity = selectedPrize and getRarityLabel(selectedPrize.Rarity) or "aleatorio"
+                Module.PendingRoundSummary = selectedPrize and formatPrizeTiles() or nil
 
                 pcall(function()
                     digRemote:FireServer(tile)
