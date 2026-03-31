@@ -54,6 +54,7 @@ Batata.LocalConfigPath = Batata.LocalConfigPath or "batata/profile.json"
 Batata.LogFolder = Batata.LogFolder or "batata/logs"
 Batata.LogPaths = Batata.LogPaths or {
     Inventory = "batata/logs/potatoes.json",
+    InventoryText = "batata/logs/potatoes.txt",
     Prestige = "batata/logs/prestige.log",
     Ascension = "batata/logs/ascension.log",
 }
@@ -153,6 +154,95 @@ local function getSortedKeys(tbl)
 
     table.sort(keys)
     return keys
+end
+
+local function isSequentialArray(tbl)
+    if type(tbl) ~= "table" then
+        return false
+    end
+
+    local count = 0
+    local maxIndex = 0
+
+    for key in pairs(tbl) do
+        if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then
+            return false
+        end
+
+        count = count + 1
+        if key > maxIndex then
+            maxIndex = key
+        end
+    end
+
+    return count == maxIndex
+end
+
+local function escapeJsonString(value)
+    local text = tostring(value or "")
+    text = string.gsub(text, "\\", "\\\\")
+    text = string.gsub(text, "\"", "\\\"")
+    text = string.gsub(text, "\b", "\\b")
+    text = string.gsub(text, "\f", "\\f")
+    text = string.gsub(text, "\n", "\\n")
+    text = string.gsub(text, "\r", "\\r")
+    text = string.gsub(text, "\t", "\\t")
+    return "\"" .. text .. "\""
+end
+
+local function encodePrettyJson(value, indentLevel)
+    local valueType = type(value)
+    local level = indentLevel or 0
+    local indent = string.rep("  ", level)
+    local nextIndent = string.rep("  ", level + 1)
+
+    if valueType == "nil" then
+        return "null"
+    end
+
+    if valueType == "string" then
+        return escapeJsonString(value)
+    end
+
+    if valueType == "number" then
+        return tostring(value)
+    end
+
+    if valueType == "boolean" then
+        return value and "true" or "false"
+    end
+
+    if valueType ~= "table" then
+        return escapeJsonString(tostring(value))
+    end
+
+    if next(value) == nil then
+        return isSequentialArray(value) and "[]" or "{}"
+    end
+
+    if isSequentialArray(value) then
+        local lines = { "[" }
+        for index = 1, #value do
+            table.insert(lines, nextIndent .. encodePrettyJson(value[index], level + 1) .. (index < #value and "," or ""))
+        end
+        table.insert(lines, indent .. "]")
+        return table.concat(lines, "\n")
+    end
+
+    local keys = getSortedKeys(value)
+    local lines = { "{" }
+
+    for index, key in ipairs(keys) do
+        local actualKey = tonumber(key)
+        if actualKey == nil or value[actualKey] == nil then
+            actualKey = key
+        end
+        local encodedValue = encodePrettyJson(value[actualKey], level + 1)
+        table.insert(lines, nextIndent .. escapeJsonString(key) .. ": " .. encodedValue .. (index < #keys and "," or ""))
+    end
+
+    table.insert(lines, indent .. "}")
+    return table.concat(lines, "\n")
 end
 
 local function normalizePath(path)
@@ -404,10 +494,10 @@ function Batata.Util.WriteJsonFile(path, data)
     Batata.Util.EnsureLogFolder()
 
     local okEncode, encoded = pcall(function()
-        return HttpService:JSONEncode(data)
+        return encodePrettyJson(data, 0)
     end)
 
-    if not okEncode or type(encoded) ~= "string" then
+    if not okEncode or type(encoded) ~= "string" or encoded == "" then
         return false, "falha ao serializar json"
     end
 
@@ -458,6 +548,25 @@ function Batata.Util.AppendLogLine(path, line)
     return true
 end
 
+function Batata.Util.WriteTextFile(path, content)
+    if type(path) ~= "string" or path == "" then
+        return false, "caminho invalido"
+    end
+
+    if type(writefile) ~= "function" then
+        return false, "writefile indisponivel"
+    end
+
+    Batata.Util.EnsureLogFolder()
+
+    local okWrite, writeErr = pcall(writefile, path, tostring(content or ""))
+    if not okWrite then
+        return false, tostring(writeErr)
+    end
+
+    return true
+end
+
 function Batata.Util.SavePotatoInventorySnapshot(potatoInventory, lockedPotatoes)
     if type(writefile) ~= "function" then
         return false, "writefile indisponivel"
@@ -493,13 +602,31 @@ function Batata.Util.SavePotatoInventorySnapshot(potatoInventory, lockedPotatoes
         Potatoes = entries,
     }
 
-    local ok, err = Batata.Util.WriteJsonFile(Batata.LogPaths.Inventory, payload)
-    if ok then
+    local textLines = {
+        "Inventario de Batatas",
+        "Exportado em: " .. Batata.Util.GetLocalDateTime(),
+        "Tipos unicos: " .. tostring(#entries),
+        "Total de batatas: " .. tostring(totalAmount),
+        "",
+    }
+
+    for _, entry in ipairs(entries) do
+        local lockedText = entry.Locked == true and "sim" or "nao"
+        table.insert(
+            textLines,
+            string.format("%s | quantidade=%s | lock=%s", tostring(entry.Id), tostring(entry.Amount), lockedText)
+        )
+    end
+
+    local okJson, errJson = Batata.Util.WriteJsonFile(Batata.LogPaths.Inventory, payload)
+    local okText, errText = Batata.Util.WriteTextFile(Batata.LogPaths.InventoryText, table.concat(textLines, "\n"))
+
+    if okJson and okText then
         Batata.LastPotatoInventorySignature = signature
         return true
     end
 
-    return false, err
+    return false, tostring(errJson or errText or "falha ao salvar inventario")
 end
 
 function Batata.Util.TryInvokeRemote(remoteName, ...)
