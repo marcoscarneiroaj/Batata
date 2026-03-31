@@ -51,8 +51,15 @@ Batata.BootLog = Batata.BootLog or {}
 Batata.BootErrors = Batata.BootErrors or {}
 Batata.LocalConfigFolder = Batata.LocalConfigFolder or "batata"
 Batata.LocalConfigPath = Batata.LocalConfigPath or "batata/profile.json"
+Batata.LogFolder = Batata.LogFolder or "batata/logs"
+Batata.LogPaths = Batata.LogPaths or {
+    Inventory = "batata/logs/potatoes.json",
+    Prestige = "batata/logs/prestige.log",
+    Ascension = "batata/logs/ascension.log",
+}
 Batata.LocalConfig = Batata.LocalConfig or nil
 Batata.LocalConfigLoaded = Batata.LocalConfigLoaded or false
+Batata.LastPotatoInventorySignature = Batata.LastPotatoInventorySignature or nil
 
 Batata.DelayProfiles = Batata.DelayProfiles or {
     economico = {
@@ -121,6 +128,32 @@ Batata.DelayProfiles = Batata.DelayProfiles or {
 }
 
 local DEFAULT_DELAY_PROFILE = "medio"
+
+local function cloneValue(value)
+    if type(value) ~= "table" then
+        return value
+    end
+
+    local copy = {}
+    for key, nestedValue in pairs(value) do
+        copy[key] = cloneValue(nestedValue)
+    end
+    return copy
+end
+
+local function getSortedKeys(tbl)
+    local keys = {}
+    if type(tbl) ~= "table" then
+        return keys
+    end
+
+    for key in pairs(tbl) do
+        table.insert(keys, tostring(key))
+    end
+
+    table.sort(keys)
+    return keys
+end
 
 local function normalizePath(path)
     local text = string.gsub(tostring(path or ""), "\\", "/")
@@ -316,6 +349,157 @@ function Batata.Util.SaveLocalConfig(config)
     Batata.LocalConfig = config
     Batata.LocalConfigLoaded = true
     return true
+end
+
+function Batata.Util.CanPersistLocalFiles()
+    return type(writefile) == "function"
+end
+
+function Batata.Util.EnsureLogFolder()
+    if type(makefolder) == "function" then
+        pcall(makefolder, Batata.LocalConfigFolder)
+        pcall(makefolder, Batata.LogFolder)
+    end
+end
+
+function Batata.Util.GetRuntimeSeconds()
+    if type(time) == "function" then
+        local ok, value = pcall(time)
+        if ok and tonumber(value) ~= nil then
+            return tonumber(value)
+        end
+    end
+
+    if type(tick) == "function" then
+        local ok, value = pcall(tick)
+        if ok and tonumber(value) ~= nil then
+            return tonumber(value)
+        end
+    end
+
+    return os.clock()
+end
+
+function Batata.Util.GetLocalDateTime(timestamp)
+    return os.date("%Y-%m-%d %H:%M:%S", tonumber(timestamp) or os.time())
+end
+
+function Batata.Util.FormatDuration(seconds)
+    local total = math.max(0, math.floor(tonumber(seconds) or 0))
+    local hours = math.floor(total / 3600)
+    local minutes = math.floor((total % 3600) / 60)
+    local secs = total % 60
+    return string.format("%02d:%02d:%02d", hours, minutes, secs)
+end
+
+function Batata.Util.WriteJsonFile(path, data)
+    if type(path) ~= "string" or path == "" then
+        return false, "caminho invalido"
+    end
+
+    if type(writefile) ~= "function" then
+        return false, "writefile indisponivel"
+    end
+
+    Batata.Util.EnsureLogFolder()
+
+    local okEncode, encoded = pcall(function()
+        return HttpService:JSONEncode(data)
+    end)
+
+    if not okEncode or type(encoded) ~= "string" then
+        return false, "falha ao serializar json"
+    end
+
+    local okWrite, writeErr = pcall(writefile, path, encoded)
+    if not okWrite then
+        return false, tostring(writeErr)
+    end
+
+    return true
+end
+
+function Batata.Util.AppendLogLine(path, line)
+    if type(path) ~= "string" or path == "" then
+        return false, "caminho invalido"
+    end
+
+    if type(writefile) ~= "function" then
+        return false, "writefile indisponivel"
+    end
+
+    Batata.Util.EnsureLogFolder()
+
+    local text = tostring(line or "")
+    if string.sub(text, -1) ~= "\n" then
+        text = text .. "\n"
+    end
+
+    if type(appendfile) == "function" then
+        local okAppend, appendErr = pcall(appendfile, path, text)
+        if okAppend then
+            return true
+        end
+    end
+
+    local previous = ""
+    if type(readfile) == "function" then
+        local okRead, content = pcall(readfile, path)
+        if okRead and type(content) == "string" then
+            previous = content
+        end
+    end
+
+    local okWrite, writeErr = pcall(writefile, path, previous .. text)
+    if not okWrite then
+        return false, tostring(writeErr)
+    end
+
+    return true
+end
+
+function Batata.Util.SavePotatoInventorySnapshot(potatoInventory, lockedPotatoes)
+    if type(writefile) ~= "function" then
+        return false, "writefile indisponivel"
+    end
+
+    local potatoes = type(potatoInventory) == "table" and potatoInventory or {}
+    local locked = type(lockedPotatoes) == "table" and lockedPotatoes or {}
+    local entries = {}
+    local signatureParts = {}
+    local totalAmount = 0
+
+    for _, potatoId in ipairs(getSortedKeys(potatoes)) do
+        local amount = tonumber(potatoes[potatoId]) or 0
+        totalAmount = totalAmount + amount
+        table.insert(signatureParts, potatoId .. "=" .. tostring(amount))
+        table.insert(entries, {
+            Id = potatoId,
+            Amount = amount,
+            Locked = cloneValue(locked[potatoId]),
+        })
+    end
+
+    local signature = table.concat(signatureParts, "|")
+    if signature == Batata.LastPotatoInventorySignature then
+        return true, "sem alteracoes"
+    end
+
+    local payload = {
+        ExportedAt = os.time(),
+        ExportedAtLocal = Batata.Util.GetLocalDateTime(),
+        TotalUniquePotatoes = #entries,
+        TotalPotatoes = totalAmount,
+        Potatoes = entries,
+    }
+
+    local ok, err = Batata.Util.WriteJsonFile(Batata.LogPaths.Inventory, payload)
+    if ok then
+        Batata.LastPotatoInventorySignature = signature
+        return true
+    end
+
+    return false, err
 end
 
 function Batata.Util.TryInvokeRemote(remoteName, ...)
