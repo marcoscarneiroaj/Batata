@@ -10,6 +10,7 @@ end
 
 local prestigeRemote = Batata.Util.EnsureRemotes().PerformPrestige
 local equipPotatoRemote = Batata.Util.EnsureRemotes():Get("EquipPotato")
+local prestigeCompleteRemote = Batata.Util.EnsureRemotes():Get("PrestigeComplete")
 
 local CHECK_DELAY = 1
 local MIN_INTERVAL = 30
@@ -29,7 +30,22 @@ local Module = {
     SessionPrestigePoints = 0,
     StartTimesPrestiged = nil,
     StartTotalPrestigePointsEarned = nil,
+    CycleStartedAt = Batata.Util and Batata.Util.GetRuntimeSeconds and Batata.Util.GetRuntimeSeconds() or os.clock(),
+    LastAttemptPotentialPP = 0,
+    LastAttemptRequiredCash = 0,
 }
+
+local connections = {}
+
+local function disconnectAll()
+    for _, connection in ipairs(connections) do
+        if connection and connection.Disconnect then
+            connection:Disconnect()
+        end
+    end
+
+    table.clear(connections)
+end
 
 local function getNow()
     return os.clock()
@@ -137,7 +153,11 @@ local function isIntervalReady()
 end
 
 function Module:SetEnabled(enabled)
+    local wasEnabled = self.Enabled == true
     self.Enabled = enabled == true
+    if self.Enabled and not wasEnabled then
+        self.CycleStartedAt = Batata.Util.GetRuntimeSeconds()
+    end
 end
 
 function Module:SetDelay(value)
@@ -194,9 +214,46 @@ end
 function Module:Stop()
     self.Running = false
     self.Enabled = false
+    disconnectAll()
     if Batata.Modules.AutoPrestige == self then
         Batata.Modules.AutoPrestige = nil
     end
+end
+
+local function logPrestige(payload)
+    if not (Batata.Util and type(Batata.Util.AppendLogLine) == "function") then
+        return
+    end
+
+    local gainedPoints = 0
+    if type(payload) == "table" then
+        gainedPoints = tonumber(payload.PointsGained) or 0
+    end
+
+    local nowRuntime = Batata.Util.GetRuntimeSeconds()
+    local elapsedSeconds = math.max(0, nowRuntime - (tonumber(Module.CycleStartedAt) or nowRuntime))
+    Module.CycleStartedAt = nowRuntime
+
+    local line = string.format(
+        "[%s] pp_ganho=%s | levou=%s | base_alvo=%s | cash_necessario=%s | pp_potencial=%s",
+        Batata.Util.GetLocalDateTime(),
+        tostring(gainedPoints),
+        Batata.Util.FormatDuration(elapsedSeconds),
+        tostring(getTargetValue()),
+        tostring(math.floor(getRequiredCashForBase(getTargetValue()))),
+        tostring(math.floor(tonumber(Module.LastAttemptPotentialPP) or 0))
+    )
+
+    local ok, err = Batata.Util.AppendLogLine(Batata.LogPaths.Prestige, line)
+    if ok ~= true then
+        warn("[BatataPrestige] falha ao salvar log: " .. tostring(err))
+    end
+end
+
+if prestigeCompleteRemote and prestigeCompleteRemote.OnClientEvent then
+    table.insert(connections, prestigeCompleteRemote.OnClientEvent:Connect(function(payload)
+        logPrestige(payload)
+    end))
 end
 
 Batata.Util.ApplyCurrentDelayProfileToModule(Module)
@@ -204,6 +261,8 @@ Batata.Util.ApplyCurrentDelayProfileToModule(Module)
 task.spawn(function()
     while Module.Running do
         if Module.Enabled and isIntervalReady() and canPrestigeNow() then
+            Module.LastAttemptPotentialPP = getPotentialPrestigePoints()
+            Module.LastAttemptRequiredCash = getRequiredCashForBase(getTargetValue())
             local ok = pcall(function()
                 if equipPotatoRemote then
                     equipPotatoRemote:FireServer(PRESTIGE_POTATO)
