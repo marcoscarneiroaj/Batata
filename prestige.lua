@@ -113,6 +113,12 @@ local function getCurrentCash()
     return tonumber(stats.Cash) or 0
 end
 
+local function rememberEquippedPotato(potatoId)
+    if Batata.Util and type(Batata.Util.SetKnownEquippedPotato) == "function" then
+        Batata.Util.SetKnownEquippedPotato(potatoId)
+    end
+end
+
 local function getPotentialPrestigePoints()
     local stats = getStats()
     if type(stats) == "table" then
@@ -288,6 +294,7 @@ task.spawn(function()
             local ok = pcall(function()
                 if equipPotatoRemote then
                     equipPotatoRemote:FireServer(PRESTIGE_POTATO)
+                    rememberEquippedPotato(PRESTIGE_POTATO)
                     task.wait(EQUIP_DELAY)
                 end
 
@@ -296,6 +303,7 @@ task.spawn(function()
                 if equipPotatoRemote then
                     task.wait(EQUIP_DELAY)
                     equipPotatoRemote:FireServer(DEFAULT_POTATO)
+                    rememberEquippedPotato(DEFAULT_POTATO)
                 end
             end)
 
