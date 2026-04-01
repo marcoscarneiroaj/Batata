@@ -13,6 +13,8 @@ local remotes = Batata.Util.EnsureRemotes()
 local DIG_DELAY = 1
 local DIG_MIN_COST = 5
 local DIG_MAX_TILE = 18
+local DIG_POTATO = "sand_potato"
+local EQUIP_DELAY = 0.15
 local RARITY_PRIORITY = {
     secret = 7,
     mythic = 6,
@@ -38,6 +40,7 @@ local Module = {
     PendingChoiceTile = nil,
     PendingChoiceRarity = nil,
     PendingRoundSummary = nil,
+    PendingPreviousPotato = nil,
 }
 
 local connections = {}
@@ -146,6 +149,7 @@ local function clearPendingChoice()
     Module.PendingChoiceTile = nil
     Module.PendingChoiceRarity = nil
     Module.PendingRoundSummary = nil
+    Module.PendingPreviousPotato = nil
 end
 
 local function setPrizeTiles(prizeTiles)
@@ -190,6 +194,20 @@ end
 
 local function canDigNow()
     return (tonumber(Module.StaminaCurrent) or 0) >= DIG_MIN_COST
+end
+
+local function getCurrentEquippedPotato()
+    if Batata.Util and type(Batata.Util.GetCurrentEquippedPotatoId) == "function" then
+        return Batata.Util.GetCurrentEquippedPotatoId()
+    end
+
+    return nil
+end
+
+local function rememberEquippedPotato(potatoId)
+    if Batata.Util and type(Batata.Util.SetKnownEquippedPotato) == "function" then
+        Batata.Util.SetKnownEquippedPotato(potatoId)
+    end
 end
 
 function Module:SetEnabled(enabled)
@@ -304,6 +322,17 @@ if resultRemote and resultRemote.OnClientEvent then
         Module.LastResult = payload
         Module.PendingResult = false
 
+        local previousPotato = Module.PendingPreviousPotato
+        if previousPotato and previousPotato ~= "" and previousPotato ~= DIG_POTATO then
+            local equipPotatoRemote = remotes:Get("EquipPotato")
+            if equipPotatoRemote then
+                pcall(function()
+                    equipPotatoRemote:FireServer(previousPotato)
+                end)
+                rememberEquippedPotato(previousPotato)
+            end
+        end
+
         local itemData = type(payload.Item) == "table" and payload.Item or nil
         if Module.PendingRoundSummary and hasRealItem(itemData) then
             appendDigLog(
@@ -357,6 +386,16 @@ task.spawn(function()
                 Module.PendingChoiceTile = tile
                 Module.PendingChoiceRarity = selectedPrize and getRarityLabel(selectedPrize.Rarity) or "aleatorio"
                 Module.PendingRoundSummary = selectedPrize and formatPrizeTiles() or nil
+                Module.PendingPreviousPotato = getCurrentEquippedPotato()
+
+                local equipPotatoRemote = remotes:Get("EquipPotato")
+                if equipPotatoRemote and Module.PendingPreviousPotato ~= DIG_POTATO then
+                    pcall(function()
+                        equipPotatoRemote:FireServer(DIG_POTATO)
+                    end)
+                    rememberEquippedPotato(DIG_POTATO)
+                    task.wait(EQUIP_DELAY)
+                end
 
                 pcall(function()
                     digRemote:FireServer(tile)
