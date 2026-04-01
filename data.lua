@@ -101,6 +101,49 @@ local function cloneTable(source)
     return copy
 end
 
+local function captureEquippedPotato(source, depth, visited)
+    if type(source) ~= "table" then
+        return nil
+    end
+
+    visited = visited or {}
+    if visited[source] == true then
+        return nil
+    end
+    visited[source] = true
+
+    for key, value in pairs(source) do
+        local normalizedKey = string.lower(tostring(key or ""))
+        if normalizedKey == "equippedpotato"
+            or normalizedKey == "equippedpotatoid"
+            or normalizedKey == "selectedpotato"
+            or normalizedKey == "selectedpotatoid"
+            or normalizedKey == "currentpotato"
+            or normalizedKey == "currentpotatoid"
+            or normalizedKey == "potatoid" then
+            local captured = Batata.Util and Batata.Util.SetKnownEquippedPotato and Batata.Util.SetKnownEquippedPotato(value)
+            if captured ~= nil then
+                return captured
+            end
+        end
+    end
+
+    if (depth or 0) >= 2 then
+        return nil
+    end
+
+    for _, value in pairs(source) do
+        if type(value) == "table" then
+            local captured = captureEquippedPotato(value, (depth or 0) + 1, visited)
+            if captured ~= nil then
+                return captured
+            end
+        end
+    end
+
+    return nil
+end
+
 local function getSortedKeys(tbl)
     local keys = {}
     if type(tbl) ~= "table" then
@@ -227,6 +270,9 @@ local function updateData(payload)
             updatedInventory = true
         end
     end
+
+    captureEquippedPotato(payload)
+    captureEquippedPotato(Data)
 
     Data.LastUpdatedAt = os.clock()
     rebuildDerivedData()
