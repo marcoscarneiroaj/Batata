@@ -54,6 +54,9 @@ local statLabels = {}
 local infoLabels = {}
 local pickerButtons = {}
 local profileButtons = {}
+local tradeWhitelistBox
+local DEFAULT_TRADE_WHITELIST =
+    "GalaxiaViajante,miguelcarneiroAC01,miguelcarneiroAC02,miguelcarneiroAC03"
 
 local function bind(signal, callback)
     table.insert(connections, signal:Connect(callback))
@@ -185,6 +188,10 @@ local function ensureFusionController()
     return ensureModule("AutoFusion", "Fusion")
 end
 
+local function ensureTradeController()
+    return ensureModule("AutoTrade", "Trade")
+end
+
 local function ensureShopController()
     return ensureModule("AutoShop", "Shop")
 end
@@ -215,6 +222,7 @@ local moduleDefinitions = {
     { Key = "Click", ModuleName = "AutoClick", Ensure = ensureClickController, Title = "Auto Click", Description = "Executa clique continuo.", Page = "Automacao" },
     { Key = "Sell", ModuleName = "AutoSell", Ensure = ensureSellController, Title = "Auto Sell", Description = "Vende batatas automaticamente.", Page = "Sell" },
     { Key = "Fusion", ModuleName = "AutoFusion", Ensure = ensureFusionController, Title = "Auto Fusao", Description = "Funde deixando 1 de cada.", Page = "Fusao" },
+    { Key = "Trade", ModuleName = "AutoTrade", Ensure = ensureTradeController, Title = "Auto Trade", Description = "Aceita so a lista confiavel e recusa o resto.", Page = "Trade" },
     { Key = "Shop", ModuleName = "AutoShop", Ensure = ensureShopController, Title = "Auto Loja", Description = "Compra rotacao nova menos rock.", Page = "Loja" },
     { Key = "Dig", ModuleName = "AutoDig", Ensure = ensureDigController, Title = "Auto Dig", Description = "Escava com stamina.", Page = "Dig" },
     { Key = "Prestige", ModuleName = "AutoPrestige", Ensure = ensurePrestigeController, Title = "Auto Prestige", Description = "Prestigia com troca de batata.", Page = "Prestigio" },
@@ -271,6 +279,8 @@ local function buildLocalConfig()
     local sellState = getModuleState(moduleByKey.Sell)
     local prestigeState = getModuleState(moduleByKey.Prestige)
     local potionState = getModuleState(moduleByKey.Potion)
+    local tradeState = getModuleState(moduleByKey.Trade)
+    local whitelistText = tradeWhitelistBox and tradeWhitelistBox.Text or nil
 
     return {
         Version = 1,
@@ -289,6 +299,9 @@ local function buildLocalConfig()
         },
         Potion = {
             SelectedPotions = cloneBooleanMap(potionState and potionState.SelectedPotions or nil),
+        },
+        Trade = {
+            WhitelistText = whitelistText or (tradeState and tradeState.WhitelistText) or DEFAULT_TRADE_WHITELIST,
         },
         SavedAt = os.time(),
     }
@@ -361,6 +374,13 @@ local function applySavedRuntimeConfig(config)
             for potionId, enabled in pairs(config.Potion.SelectedPotions) do
                 controller:SetPotionEnabled(potionId, enabled == true)
             end
+        end
+    end
+
+    if type(config.Trade) == "table" then
+        local ok, controller = ensureTradeController()
+        if ok and type(controller) == "table" and type(controller.SetWhitelistFromString) == "function" then
+            controller:SetWhitelistFromString(config.Trade.WhitelistText or DEFAULT_TRADE_WHITELIST)
         end
     end
 end
@@ -886,6 +906,7 @@ local farmPage = createPage("Fazenda")
 local upgradePage = createPage("Upgrade")
 local sellPage = createPage("Sell")
 local fusionPage = createPage("Fusao")
+local tradePage = createPage("Trade")
 local shopPage = createPage("Loja")
 local digPage = createPage("Dig")
 local prestigePage = createPage("Prestigio")
@@ -901,6 +922,7 @@ pages.Geradores = farmPage
 pages.Upgrade = upgradePage
 pages.Sell = sellPage
 pages.Fusao = fusionPage
+pages.Trade = tradePage
 pages.Loja = shopPage
 pages.Dig = digPage
 pages.Prestigio = prestigePage
@@ -915,6 +937,7 @@ createPageHeader(farmPage, "Geradores", "Controle da compra e troca de geradores
 createPageHeader(upgradePage, "Upgrade", "Controle de upgrades automaticos")
 createPageHeader(sellPage, "Auto Sell", "Venda automatica de batatas")
 createPageHeader(fusionPage, "Fusao", "Fusao automatica com seguranca")
+createPageHeader(tradePage, "Trade", "Trocas automaticas so com a lista confiavel")
 createPageHeader(shopPage, "Loja", "Compra da rotacao da loja")
 createPageHeader(digPage, "Dig", "Escavacao por stamina e tiles")
 createPageHeader(prestigePage, "Prestigio", "Prestigio com solar_flare_potato")
@@ -1109,6 +1132,7 @@ createModulePage(clickPage, moduleByKey.Click, "Executa o remote principal de cl
 createModulePage(upgradePage, moduleByKey.Upgrade, "Compra sempre o melhor upgrade compravel no momento.")
 createModulePage(sellPage, moduleByKey.Sell, "Vende comum e dourada de forma independente.")
 createModulePage(fusionPage, moduleByKey.Fusion, "Funde com foco em seguranca e mantendo 1 no inventario.")
+createModulePage(tradePage, moduleByKey.Trade, "Aceita troca so de nomes confiaveis e recusa o restante.")
 createModulePage(shopPage, moduleByKey.Shop, "Compra itens de cada rotacao, menos rock.")
 createModulePage(digPage, moduleByKey.Dig, "Escava quando a stamina atual estiver em 5 ou mais.")
 createModulePage(prestigePage, moduleByKey.Prestige, "Equipa solar_flare_potato, prestigia e volta para the_first_potato.")
@@ -1137,6 +1161,39 @@ createInfoLabel(shopPage, 26, 256, 530, 52, "ShopExtra", "Detalhes")
 createInfoLabel(digPage, 26, 256, 530, 52, "DigExtra", "Detalhes")
 createInfoLabel(ascensionPage, 26, 256, 530, 52, "AscensionExtra", "Detalhes")
 createInfoLabel(potionPage, 26, 256, 530, 52, "PotionExtra", "Detalhes")
+
+local tradeConfigPanel = createPanel(tradePage, 12, 256, 562, 168, "Lista confiavel")
+
+local tradeHint = Instance.new("TextLabel")
+tradeHint.BackgroundTransparency = 1
+tradeHint.Position = UDim2.new(0, 14, 0, 36)
+tradeHint.Size = UDim2.new(1, -28, 0, 16)
+tradeHint.Text = "Separe por virgula ou quebra de linha. So esses nomes terao trade aceito."
+tradeHint.Font = Enum.Font.Gotham
+tradeHint.TextSize = 10
+tradeHint.TextColor3 = Color3.fromRGB(138, 149, 177)
+tradeHint.TextXAlignment = Enum.TextXAlignment.Left
+tradeHint.Parent = tradeConfigPanel
+
+tradeWhitelistBox = Instance.new("TextBox")
+tradeWhitelistBox.Size = UDim2.new(0, 534, 0, 70)
+tradeWhitelistBox.Position = UDim2.new(0, 14, 0, 58)
+tradeWhitelistBox.BackgroundColor3 = Color3.fromRGB(27, 34, 50)
+tradeWhitelistBox.BorderSizePixel = 0
+tradeWhitelistBox.MultiLine = true
+tradeWhitelistBox.ClearTextOnFocus = false
+tradeWhitelistBox.TextWrapped = true
+tradeWhitelistBox.TextYAlignment = Enum.TextYAlignment.Top
+tradeWhitelistBox.TextXAlignment = Enum.TextXAlignment.Left
+tradeWhitelistBox.Text = DEFAULT_TRADE_WHITELIST
+tradeWhitelistBox.Font = Enum.Font.Gotham
+tradeWhitelistBox.TextSize = 12
+tradeWhitelistBox.TextColor3 = Color3.fromRGB(245, 247, 255)
+tradeWhitelistBox.Parent = tradeConfigPanel
+corner(tradeWhitelistBox, 10)
+stroke(tradeWhitelistBox, Color3.fromRGB(82, 93, 125), 0.45, 1)
+
+createInfoLabel(tradeConfigPanel, 14, 132, 530, 16, "TradeExtra", "Ultimo trade")
 
 local sellConfigPanel = createPanel(sellPage, 12, 256, 562, 170, "Configuracao dos valores de venda")
 local function createSimpleRowTitle(parent, x, y, titleText, descText)
@@ -1364,6 +1421,7 @@ local tabNames = {
     "Upgrade",
     "Sell",
     "Fusao",
+    "Trade",
     "Loja",
     "Dig",
     "Prestigio",
@@ -1683,6 +1741,25 @@ local function refreshGui()
     local fusionState = getModuleState(moduleByKey.Fusion)
     infoLabels.FusionExtra.Text = fusionState and tostring(fusionState.LastMessage or fusionState.LastStatus or "-") or "-"
 
+    local tradeState = getModuleState(moduleByKey.Trade)
+    if tradeState then
+        if infoLabels.TradeExtra then
+            infoLabels.TradeExtra.Text = string.format(
+                "%s | %s | %s",
+                tostring(tradeState.LastRequester or "-"),
+                tostring(tradeState.LastDecision or "-"),
+                tostring(tradeState.LastResult or "-")
+            )
+        end
+        if tradeWhitelistBox and not tradeWhitelistBox:IsFocused() then
+            tradeWhitelistBox.Text = tostring(tradeState.WhitelistText or DEFAULT_TRADE_WHITELIST)
+        end
+    else
+        if infoLabels.TradeExtra then
+            infoLabels.TradeExtra.Text = "Configure a lista confiavel para aceitar trade."
+        end
+    end
+
     local shopState = getModuleState(moduleByKey.Shop)
     infoLabels.ShopExtra.Text = shopState and tostring(shopState.LastStatus or "-") or "-"
 
@@ -1897,6 +1974,14 @@ bind(sellDelayBox.FocusLost, function()
     local controller = Batata.Modules.AutoSell
     if controller and type(controller.SetDelay) == "function" then
         controller:SetDelay(sellDelayBox.Text)
+    end
+end)
+
+bind(tradeWhitelistBox.FocusLost, function()
+    local ok, controller = ensureTradeController()
+    if ok and type(controller.SetWhitelistFromString) == "function" then
+        controller:SetWhitelistFromString(tradeWhitelistBox.Text)
+        refreshGui()
     end
 end)
 
