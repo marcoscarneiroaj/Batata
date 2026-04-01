@@ -40,6 +40,7 @@ Batata.Paths = Batata.Paths or {
 Batata.Modules = Batata.Modules or {}
 Batata.Util = Batata.Util or {}
 Batata.DB = Batata.DB or {}
+Batata.State = Batata.State or {}
 Batata.Settings = Batata.Settings or {
     DelayProfile = "medio",
 }
@@ -302,6 +303,42 @@ local function extractNumberFromResponse(response, keyCandidates, visited)
         local nestedNumber = extractNumberFromResponse(nestedValue, keyCandidates, visited)
         if nestedNumber ~= nil then
             return nestedNumber
+        end
+    end
+
+    return nil
+end
+
+local function extractItemId(value)
+    if type(value) == "string" then
+        local trimmed = string.gsub(value, "^%s+", "")
+        trimmed = string.gsub(trimmed, "%s+$", "")
+        if trimmed ~= "" then
+            return trimmed
+        end
+        return nil
+    end
+
+    if type(value) ~= "table" then
+        return nil
+    end
+
+    local directKeys = {
+        "Id",
+        "PotatoId",
+        "ItemId",
+        "EquippedPotato",
+        "EquippedPotatoId",
+        "SelectedPotato",
+        "SelectedPotatoId",
+        "CurrentPotato",
+        "CurrentPotatoId",
+    }
+
+    for _, key in ipairs(directKeys) do
+        local nestedValue = value[key]
+        if type(nestedValue) == "string" and nestedValue ~= "" then
+            return nestedValue
         end
     end
 
@@ -665,6 +702,64 @@ function Batata.Util.TryGetRemoteNumber(remoteName, keyCandidates, ...)
     end
 
     return extractNumberFromResponse(result, keyCandidates)
+end
+
+function Batata.Util.SetKnownEquippedPotato(value)
+    local itemId = extractItemId(value)
+    if itemId == nil or itemId == "" then
+        return nil
+    end
+
+    Batata.State.LastKnownEquippedPotato = itemId
+    return itemId
+end
+
+function Batata.Util.GetCurrentEquippedPotatoId()
+    local data = Batata.Data
+    if type(data) == "table" then
+        local candidates = {
+            data.EquippedPotatoId,
+            data.EquippedPotato,
+            data.SelectedPotatoId,
+            data.SelectedPotato,
+            data.CurrentPotatoId,
+            data.CurrentPotato,
+        }
+
+        if type(data.Stats) == "table" then
+            table.insert(candidates, data.Stats.EquippedPotatoId)
+            table.insert(candidates, data.Stats.EquippedPotato)
+            table.insert(candidates, data.Stats.SelectedPotatoId)
+            table.insert(candidates, data.Stats.SelectedPotato)
+            table.insert(candidates, data.Stats.CurrentPotatoId)
+            table.insert(candidates, data.Stats.CurrentPotato)
+        end
+
+        if type(data.Equipped) == "table" then
+            table.insert(candidates, data.Equipped.PotatoId)
+            table.insert(candidates, data.Equipped.Potato)
+        end
+
+        if type(data.Selected) == "table" then
+            table.insert(candidates, data.Selected.PotatoId)
+            table.insert(candidates, data.Selected.Potato)
+        end
+
+        if type(data.Loadout) == "table" then
+            table.insert(candidates, data.Loadout.PotatoId)
+            table.insert(candidates, data.Loadout.Potato)
+        end
+
+        for _, candidate in ipairs(candidates) do
+            local itemId = extractItemId(candidate)
+            if itemId ~= nil and itemId ~= "" then
+                Batata.State.LastKnownEquippedPotato = itemId
+                return itemId
+            end
+        end
+    end
+
+    return Batata.State.LastKnownEquippedPotato
 end
 
 function Batata.Util.EnsureShared()
