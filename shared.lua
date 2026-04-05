@@ -29,6 +29,7 @@ Batata.Paths = Batata.Paths or {
     Upgrade = "upgrade.lua",
     Sell = "sell.lua",
     Fusion = "fusion.lua",
+    Codes = "codes.lua",
     Trade = "trade.lua",
     Shop = "shop.lua",
     Farm = "farm.lua",
