@@ -55,6 +55,7 @@ local infoLabels = {}
 local pickerButtons = {}
 local profileButtons = {}
 local tradeWhitelistBox
+local codesRedeemButton
 local DEFAULT_TRADE_WHITELIST =
     "GalaxiaViajante,miguelcarneiroAC01,miguelcarneiroAC02,miguelcarneiroAC03"
 
@@ -178,6 +179,10 @@ end
 
 local function ensureUpgradeController()
     return ensureModule("AutoUpgrade", "Upgrade")
+end
+
+local function ensureCodesController()
+    return ensureModule("AutoCodes", "Codes")
 end
 
 local function ensureSellController()
@@ -904,6 +909,7 @@ local clickPage = createPage("Click")
 local geneticsPage = createPage("Genetics")
 local farmPage = createPage("Fazenda")
 local upgradePage = createPage("Upgrade")
+local codesPage = createPage("Codigos")
 local sellPage = createPage("Sell")
 local fusionPage = createPage("Fusao")
 local tradePage = createPage("Trade")
@@ -920,6 +926,7 @@ pages.Genetics = geneticsPage
 pages.Fazenda = farmPage
 pages.Geradores = farmPage
 pages.Upgrade = upgradePage
+pages.Codigos = codesPage
 pages.Sell = sellPage
 pages.Fusao = fusionPage
 pages.Trade = tradePage
@@ -935,6 +942,7 @@ createPageHeader(clickPage, "Auto Click", "Controle do clique continuo")
 createPageHeader(geneticsPage, "Genetics", "Modulo manual com filtro por slot, raridade e bonus")
 createPageHeader(farmPage, "Geradores", "Controle da compra e troca de geradores")
 createPageHeader(upgradePage, "Upgrade", "Controle de upgrades automaticos")
+createPageHeader(codesPage, "Codigos", "Resgate manual dos codigos conhecidos")
 createPageHeader(sellPage, "Auto Sell", "Venda automatica de batatas")
 createPageHeader(fusionPage, "Fusao", "Fusao automatica com seguranca")
 createPageHeader(tradePage, "Trade", "Trocas automaticas so com a lista confiavel")
@@ -1140,6 +1148,31 @@ createModulePage(ascensionPage, moduleByKey.Ascension, "Usa a blessing escolhida
 createModulePage(potionPage, moduleByKey.Potion, "Renova click, golden, luck, drop chance e production.")
 local geneticsControlPanel = createModulePage(geneticsPage, moduleByKey.Genetics, "Liga so por este painel e fica fora do Ligar All.")
 
+local codesControlPanel = createPanel(codesPage, 12, 62, 562, 78, "Resgate")
+
+local codesDescription = Instance.new("TextLabel")
+codesDescription.BackgroundTransparency = 1
+codesDescription.Position = UDim2.new(0, 14, 0, 34)
+codesDescription.Size = UDim2.new(1, -180, 0, 16)
+codesDescription.Text = "Tenta resgatar os 7 codigos conhecidos e guarda o historico local."
+codesDescription.Font = Enum.Font.Gotham
+codesDescription.TextSize = 11
+codesDescription.TextColor3 = Color3.fromRGB(145, 155, 182)
+codesDescription.TextXAlignment = Enum.TextXAlignment.Left
+codesDescription.Parent = codesControlPanel
+
+codesRedeemButton = Instance.new("TextButton")
+codesRedeemButton.Size = UDim2.new(0, 148, 0, 34)
+codesRedeemButton.Position = UDim2.new(0, 396, 0, 22)
+codesRedeemButton.BackgroundColor3 = Color3.fromRGB(76, 95, 228)
+codesRedeemButton.BorderSizePixel = 0
+codesRedeemButton.Text = "Resgatar Todos"
+codesRedeemButton.Font = Enum.Font.GothamBold
+codesRedeemButton.TextSize = 12
+codesRedeemButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+codesRedeemButton.Parent = codesControlPanel
+corner(codesRedeemButton, 10)
+
 local geneticsManualButton = Instance.new("TextButton")
 geneticsManualButton.Size = UDim2.new(0, 148, 0, 34)
 geneticsManualButton.Position = UDim2.new(0, 396, 0, 22)
@@ -1155,6 +1188,7 @@ corner(geneticsManualButton, 10)
 createInfoLabel(farmPage, 26, 256, 530, 52, "FarmExtra", "Alvo atual")
 createInfoLabel(clickPage, 26, 256, 530, 52, "ClickExtra", "Detalhes")
 createInfoLabel(upgradePage, 26, 256, 530, 52, "UpgradeExtra", "Alvo atual")
+createInfoLabel(codesPage, 26, 170, 530, 52, "CodesStatus", "Status atual")
 createInfoLabel(sellPage, 26, 256, 530, 52, "SellExtra", "Detalhes")
 createInfoLabel(fusionPage, 26, 256, 530, 52, "FusionExtra", "Detalhes")
 createInfoLabel(shopPage, 26, 256, 530, 52, "ShopExtra", "Detalhes")
@@ -1163,6 +1197,12 @@ createInfoLabel(ascensionPage, 26, 256, 530, 52, "AscensionExtra", "Detalhes")
 createInfoLabel(potionPage, 26, 256, 530, 52, "PotionExtra", "Detalhes")
 
 local tradeConfigPanel = createPanel(tradePage, 12, 256, 562, 168, "Lista confiavel")
+
+local codesResultsPanel = createPanel(codesPage, 12, 256, 562, 168, "Resultados")
+createInfoLabel(codesResultsPanel, 14, 34, 530, 16, "CodesSummary", "Resumo")
+local codesListLabel = createInfoLabel(codesResultsPanel, 14, 74, 530, 82, "CodesList", "Codigos")
+codesListLabel.Font = Enum.Font.Gotham
+codesListLabel.TextSize = 11
 
 local tradeHint = Instance.new("TextLabel")
 tradeHint.BackgroundTransparency = 1
@@ -1419,6 +1459,7 @@ local tabNames = {
     "Genetics",
     "Geradores",
     "Upgrade",
+    "Codigos",
     "Sell",
     "Fusao",
     "Trade",
@@ -1716,6 +1757,39 @@ local function refreshGui()
     local upgradeState = getModuleState(moduleByKey.Upgrade)
     infoLabels.UpgradeExtra.Text = upgradeState and tostring(upgradeState.CurrentTarget or upgradeState.LastStatus or "-") or "-"
 
+    local okCodes, codesController = ensureCodesController()
+    local codesState = okCodes and type(codesController) == "table" and codesController:GetState() or nil
+    if codesState then
+        infoLabels.CodesStatus.Text = string.format(
+            "%s | ultimo=%s | %s/%s",
+            tostring(codesState.LastStatus or "-"),
+            tostring(codesState.LastCode or "-"),
+            tostring(codesState.CompletedCount or 0),
+            tostring(#(codesState.Codes or {}))
+        )
+        infoLabels.CodesSummary.Text = string.format(
+            "Ultima mensagem: %s",
+            tostring(codesState.LastMessage or "-")
+        )
+
+        local resultLines = {}
+        for _, code in ipairs(codesState.Codes or {}) do
+            local entry = codesState.ResultsByCode and codesState.ResultsByCode[code] or nil
+            local message = entry and entry.Message or "pendente"
+            table.insert(resultLines, string.format("%s = %s", tostring(code), tostring(message)))
+        end
+        infoLabels.CodesList.Text = table.concat(resultLines, "\n")
+
+        if codesRedeemButton then
+            codesRedeemButton.Text = codesState.InProgress and "Resgatando..." or "Resgatar Todos"
+            codesRedeemButton.BackgroundColor3 = codesState.InProgress and Color3.fromRGB(112, 128, 170) or Color3.fromRGB(76, 95, 228)
+        end
+    else
+        infoLabels.CodesStatus.Text = "Pronto"
+        infoLabels.CodesSummary.Text = "Clique para resgatar os codigos."
+        infoLabels.CodesList.Text = "HAPPYEASTER\nKEEWEE\nFARMERTIMMY\nWELCOME\nGOLDENSTART\nBLUEPOTATO\nCODEPOTATO"
+    end
+
     local sellState = getModuleState(moduleByKey.Sell)
     if sellState then
         infoLabels.SellExtra.Text = string.format(
@@ -1927,9 +2001,31 @@ local function withGeneticsController(callback)
     refreshGui()
 end
 
+local function withCodesController(callback)
+    local ok, controller = ensureCodesController()
+    if not ok or type(controller) ~= "table" then
+        infoLabels.SummaryStatus.Text = "falha ao carregar codes.lua"
+        if Batata.LastEnsureModuleError then
+            infoLabels.SummaryModules.Text = tostring(Batata.LastEnsureModuleError)
+        end
+        return
+    end
+
+    callback(controller)
+    refreshGui()
+end
+
 bind(geneticsManualButton.MouseButton1Click, function()
     toggleModuleByDefinition(moduleByKey.Genetics)
     refreshGui()
+end)
+
+bind(codesRedeemButton.MouseButton1Click, function()
+    withCodesController(function(controller)
+        if type(controller.RedeemAll) == "function" then
+            controller:RedeemAll()
+        end
+    end)
 end)
 
 bind(geneticsSlotBox.FocusLost, function()
