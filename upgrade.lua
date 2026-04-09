@@ -13,8 +13,9 @@ local upgradeDb = Batata.Util.EnsureUpgradeDb()
 
 local BUY_DELAY = 0
 local LOOP_DELAY = 0
-local MAX_PURCHASES_PER_PASS = 480
-local PURCHASES_BEFORE_YIELD = 240
+local MAX_PURCHASES_PER_PASS = 1
+local PURCHASES_BEFORE_YIELD = 1
+local RETRY_BLOCK_SECONDS = 0.2
 
 local Module = {
     Running = true,
@@ -29,6 +30,8 @@ local Module = {
     IgnoredUpgrades = {},
     IgnoredReasons = {},
     LastPrestigeCount = nil,
+    RetryBlockedUntil = {},
+    LastSeenLevels = {},
 }
 
 local purchasesSinceYield = 0
@@ -47,6 +50,14 @@ local function waitIfNeeded(seconds)
         purchasesSinceYield = 0
         task.wait()
     end
+end
+
+local function getNow()
+    if Batata.Util and type(Batata.Util.GetRuntimeSeconds) == "function" then
+        return tonumber(Batata.Util.GetRuntimeSeconds()) or os.clock()
+    end
+
+    return os.clock()
 end
 
 local function getCash()
@@ -73,11 +84,18 @@ end
 
 local function clearIgnoredUpgrades(reason)
     if next(Module.IgnoredUpgrades) == nil and next(Module.IgnoredReasons) == nil then
+        Module.RetryBlockedUntil = {}
+        Module.LastSeenLevels = {}
+        if type(reason) == "string" and reason ~= "" then
+            Module.LastStatus = reason
+        end
         return
     end
 
     Module.IgnoredUpgrades = {}
     Module.IgnoredReasons = {}
+    Module.RetryBlockedUntil = {}
+    Module.LastSeenLevels = {}
 
     if type(reason) == "string" and reason ~= "" then
         Module.LastStatus = reason
@@ -133,6 +151,7 @@ local function getUpgradeCost(upgradeId, level)
 end
 
 local function getNextUpgradeTarget()
+    local now = getNow()
     local cash = getCash()
     local levels = getLevels()
     local allUpgrades = upgradeDb.KnownList or upgradeDb.List or {}
@@ -145,8 +164,13 @@ local function getNextUpgradeTarget()
     for _, upgrade in ipairs(allUpgrades) do
         if Module.IgnoredUpgrades[upgrade.Id] ~= true then
             local level = tonumber(levels[upgrade.Id]) or 0
+            local previousLevel = Module.LastSeenLevels[upgrade.Id]
+            if previousLevel == nil or previousLevel ~= level then
+                Module.LastSeenLevels[upgrade.Id] = level
+                Module.RetryBlockedUntil[upgrade.Id] = nil
+            end
 
-            if level < upgrade.Max then
+            if level < upgrade.Max and (tonumber(Module.RetryBlockedUntil[upgrade.Id]) or 0) <= now then
                 local cost = getUpgradeCost(upgrade.Id, level)
 
                 if tonumber(cost) ~= nil and cost <= cash then
@@ -203,6 +227,7 @@ local function onUpgradeError(message)
     end
 
     if errorText == "Not enough cash" then
+        Module.RetryBlockedUntil[attemptedId] = getNow() + RETRY_BLOCK_SECONDS
         Module.LastStatus = "Sem cash para " .. tostring(attemptedId)
         return
     end
@@ -332,6 +357,7 @@ task.spawn(function()
                         math.min(target.Max or 0, (tonumber(target.Level) or 0) + 1),
                         tonumber(target.Max) or 0
                     )
+                    Module.RetryBlockedUntil[target.Id] = getNow() + RETRY_BLOCK_SECONDS
 
                     pcall(function()
                         purchaseRemote:FireServer(target.Id)
@@ -350,7 +376,10 @@ task.spawn(function()
 
         if Module.Delay > 0 then
             task.wait(Module.Delay)
-        elseif not boughtAnyThisPass then
+        elseif boughtAnyThisPass then
+            purchasesSinceYield = 0
+            task.wait()
+        else
             task.wait()
         end
     end
