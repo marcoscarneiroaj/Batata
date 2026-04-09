@@ -49,6 +49,7 @@ local connections = {}
 local pages = {}
 local tabs = {}
 local moduleRows = {}
+local modulePageButtons = {}
 local moduleStatusLabels = {}
 local statLabels = {}
 local infoLabels = {}
@@ -181,6 +182,10 @@ local function ensureUpgradeController()
     return ensureModule("AutoUpgrade", "Upgrade")
 end
 
+local function ensureCosmicUpgradeController()
+    return ensureModule("AutoCosmicUpgrade", "CosmicUpgrade")
+end
+
 local function ensureCodesController()
     return ensureModule("AutoCodes", "Codes")
 end
@@ -224,11 +229,12 @@ local moduleDefinitions = {
     { Key = "Potion", ModuleName = "AutoPotion", Ensure = ensurePotionController, Title = "Auto Pocao", Description = "Mantem as pocoes ativas.", Page = "Pocoes" },
     { Key = "Genetics", ModuleName = "AutoGenetics", Ensure = ensureGeneticsController, Title = "Auto Genetics", Description = "Liga so pela propria aba.", Page = "Genetics", ManualOnly = true },
     { Key = "Upgrade", ModuleName = "AutoUpgrade", Ensure = ensureUpgradeController, Title = "Auto Upgrade", Description = "Compra o melhor upgrade.", Page = "Upgrade" },
+    { Key = "CosmicUpgrade", ModuleName = "AutoCosmicUpgrade", Ensure = ensureCosmicUpgradeController, Title = "Auto Upgrade Cosmico", Description = "Compra so as 4 melhorias cosmicas.", Page = "Cosmico" },
     { Key = "Click", ModuleName = "AutoClick", Ensure = ensureClickController, Title = "Auto Click", Description = "Executa clique continuo.", Page = "Automacao" },
     { Key = "Sell", ModuleName = "AutoSell", Ensure = ensureSellController, Title = "Auto Sell", Description = "Vende batatas automaticamente.", Page = "Sell" },
     { Key = "Fusion", ModuleName = "AutoFusion", Ensure = ensureFusionController, Title = "Auto Fusao", Description = "Funde deixando 1 de cada.", Page = "Fusao" },
     { Key = "Trade", ModuleName = "AutoTrade", Ensure = ensureTradeController, Title = "Auto Trade", Description = "Aceita so a lista confiavel e recusa o resto.", Page = "Trade" },
-    { Key = "Shop", ModuleName = "AutoShop", Ensure = ensureShopController, Title = "Auto Loja", Description = "Compra rotacao nova menos rock.", Page = "Loja" },
+    { Key = "Shop", ModuleName = "AutoShop", Ensure = ensureShopController, Title = "Auto Loja", Description = "Compra rotacao e premium com moeda do jogo.", Page = "Loja" },
     { Key = "Dig", ModuleName = "AutoDig", Ensure = ensureDigController, Title = "Auto Dig", Description = "Escava com stamina.", Page = "Dig" },
     { Key = "Prestige", ModuleName = "AutoPrestige", Ensure = ensurePrestigeController, Title = "Auto Prestige", Description = "Prestigia com troca de batata.", Page = "Prestigio" },
     { Key = "PrestigeUpgrade", ModuleName = "AutoPrestigeUpgrade", Ensure = ensurePrestigeUpgradeController, Title = "Auto PP Upgrade", Description = "Compra upgrades de PP apos ascender.", Page = "Automacao" },
@@ -248,6 +254,28 @@ local toggleModuleByDefinition
 
 local function isManualOnly(definition)
     return type(definition) == "table" and definition.ManualOnly == true
+end
+
+local function disableStartupUpgradeModules()
+    local targetKeys = {
+        "Upgrade",
+        "CosmicUpgrade",
+    }
+
+    for _, key in ipairs(targetKeys) do
+        local definition = moduleByKey[key]
+        if definition and definition.ModuleName then
+            local module = Batata.Modules[definition.ModuleName]
+            if module and type(module.SetEnabled) == "function" then
+                module:SetEnabled(false)
+            else
+                local ok, controller = safeEnsure(definition)
+                if ok and type(controller.SetEnabled) == "function" then
+                    controller:SetEnabled(false)
+                end
+            end
+        end
+    end
 end
 
 local function cloneBooleanMap(source)
@@ -431,6 +459,7 @@ local function applySavedStartupConfig()
 
     pausedSnapshot = nil
     scriptPaused = false
+    disableStartupUpgradeModules()
 
     if #failedModules > 0 then
         infoLabels.SummaryStatus.Text = "alguns modulos falharam"
@@ -903,12 +932,28 @@ local function setChoiceButtonState(button, enabled)
     end
 end
 
+local function setModuleActionButtonState(button, enabled)
+    if not button then
+        return
+    end
+
+    button.Text = enabled and "Desligar" or "Ligar"
+    button.BackgroundColor3 = enabled and Color3.fromRGB(184, 82, 82) or Color3.fromRGB(76, 95, 228)
+
+    local uiStroke = button:FindFirstChildOfClass("UIStroke")
+    if uiStroke then
+        uiStroke.Color = enabled and Color3.fromRGB(219, 121, 121) or Color3.fromRGB(137, 148, 255)
+        uiStroke.Transparency = 0.15
+    end
+end
+
 local principalPage = createPage("Principal")
 local automationPage = createPage("Automacao")
 local clickPage = createPage("Click")
 local geneticsPage = createPage("Genetics")
 local farmPage = createPage("Fazenda")
 local upgradePage = createPage("Upgrade")
+local cosmicPage = createPage("Cosmico")
 local codesPage = createPage("Codigos")
 local sellPage = createPage("Sell")
 local fusionPage = createPage("Fusao")
@@ -926,6 +971,7 @@ pages.Genetics = geneticsPage
 pages.Fazenda = farmPage
 pages.Geradores = farmPage
 pages.Upgrade = upgradePage
+pages.Cosmico = cosmicPage
 pages.Codigos = codesPage
 pages.Sell = sellPage
 pages.Fusao = fusionPage
@@ -942,11 +988,12 @@ createPageHeader(clickPage, "Auto Click", "Controle do clique continuo")
 createPageHeader(geneticsPage, "Genetics", "Modulo manual com filtro por slot, raridade e bonus")
 createPageHeader(farmPage, "Geradores", "Controle da compra e troca de geradores")
 createPageHeader(upgradePage, "Upgrade", "Controle de upgrades automaticos")
+createPageHeader(cosmicPage, "Upgrade Cosmico", "Modulo separado so para as 4 melhorias cosmicas")
 createPageHeader(codesPage, "Codigos", "Resgate manual dos codigos conhecidos")
 createPageHeader(sellPage, "Auto Sell", "Venda automatica de batatas")
 createPageHeader(fusionPage, "Fusao", "Fusao automatica com seguranca")
 createPageHeader(tradePage, "Trade", "Trocas automaticas so com a lista confiavel")
-createPageHeader(shopPage, "Loja", "Compra da rotacao da loja")
+createPageHeader(shopPage, "Loja", "Compra da rotacao e da premium")
 createPageHeader(digPage, "Dig", "Escavacao por stamina e tiles")
 createPageHeader(prestigePage, "Prestigio", "Prestigio com solar_flare_potato")
 createPageHeader(ascensionPage, "Ascensao", "Ascensao automatica")
@@ -1123,13 +1170,27 @@ local function createModulePage(page, definition, subtitleText)
     local description = Instance.new("TextLabel")
     description.BackgroundTransparency = 1
     description.Position = UDim2.new(0, 14, 0, 34)
-    description.Size = UDim2.new(1, -90, 0, 16)
+    description.Size = UDim2.new(1, -198, 0, 16)
     description.Text = subtitleText
     description.Font = Enum.Font.Gotham
     description.TextSize = 11
     description.TextColor3 = Color3.fromRGB(145, 155, 182)
     description.TextXAlignment = Enum.TextXAlignment.Left
     description.Parent = controlPanel
+
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.Size = UDim2.new(0, 128, 0, 34)
+    toggleButton.Position = UDim2.new(0, 418, 0, 22)
+    toggleButton.BorderSizePixel = 0
+    toggleButton.Font = Enum.Font.GothamBold
+    toggleButton.TextSize = 12
+    toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    toggleButton.Parent = controlPanel
+    corner(toggleButton, 10)
+    stroke(toggleButton, Color3.fromRGB(137, 148, 255), 0.15, 1)
+    setModuleActionButtonState(toggleButton, false)
+
+    modulePageButtons[definition.Key] = toggleButton
 
     moduleStatusLabels[definition.Key] = createInfoLabel(page, 26, 170, 530, 52, definition.Key .. "Status", "Status atual")
     return controlPanel
@@ -1138,10 +1199,11 @@ end
 createModulePage(farmPage, moduleByKey.Farm, "Compra o melhor gerador disponivel e troca quando um melhor libera.")
 createModulePage(clickPage, moduleByKey.Click, "Executa o remote principal de clique continuamente.")
 createModulePage(upgradePage, moduleByKey.Upgrade, "Compra sempre o melhor upgrade compravel no momento.")
+createModulePage(cosmicPage, moduleByKey.CosmicUpgrade, "Tenta comprar apenas as 4 melhorias especiais em loop.")
 createModulePage(sellPage, moduleByKey.Sell, "Vende comum e dourada de forma independente.")
 createModulePage(fusionPage, moduleByKey.Fusion, "Funde com foco em seguranca e mantendo 1 no inventario.")
 createModulePage(tradePage, moduleByKey.Trade, "Aceita troca so de nomes confiaveis e recusa o restante.")
-createModulePage(shopPage, moduleByKey.Shop, "Compra itens de cada rotacao, menos rock.")
+createModulePage(shopPage, moduleByKey.Shop, "Compra itens da rotacao e tudo da premium que usar moeda do jogo.")
 createModulePage(digPage, moduleByKey.Dig, "Escava quando a stamina atual estiver em 5 ou mais.")
 createModulePage(prestigePage, moduleByKey.Prestige, "Equipa solar_flare_potato, prestigia e volta para the_first_potato.")
 createModulePage(ascensionPage, moduleByKey.Ascension, "Usa a blessing escolhida quando os PP atuais batem o custo.")
@@ -1188,6 +1250,7 @@ corner(geneticsManualButton, 10)
 createInfoLabel(farmPage, 26, 256, 530, 52, "FarmExtra", "Alvo atual")
 createInfoLabel(clickPage, 26, 256, 530, 52, "ClickExtra", "Detalhes")
 createInfoLabel(upgradePage, 26, 256, 530, 52, "UpgradeExtra", "Alvo atual")
+createInfoLabel(cosmicPage, 26, 256, 530, 52, "CosmicUpgradeExtra", "Detalhes")
 createInfoLabel(codesPage, 26, 170, 530, 52, "CodesStatus", "Status atual")
 createInfoLabel(sellPage, 26, 256, 530, 52, "SellExtra", "Detalhes")
 createInfoLabel(fusionPage, 26, 256, 530, 52, "FusionExtra", "Detalhes")
@@ -1459,6 +1522,7 @@ local tabNames = {
     "Genetics",
     "Geradores",
     "Upgrade",
+    "Cosmico",
     "Codigos",
     "Sell",
     "Fusao",
@@ -1542,6 +1606,7 @@ end
 
 setStartupModules = function()
     setAllModules(true)
+    disableStartupUpgradeModules()
 
     pausedSnapshot = nil
     scriptPaused = false
@@ -1675,6 +1740,10 @@ local function refreshGui()
             moduleRows[definition.Key].SetSwitch(enabled)
         end
 
+        if modulePageButtons[definition.Key] then
+            setModuleActionButtonState(modulePageButtons[definition.Key], enabled)
+        end
+
         if moduleStatusLabels[definition.Key] then
             moduleStatusLabels[definition.Key].Text = tostring(statusText or "-")
         end
@@ -1756,6 +1825,18 @@ local function refreshGui()
 
     local upgradeState = getModuleState(moduleByKey.Upgrade)
     infoLabels.UpgradeExtra.Text = upgradeState and tostring(upgradeState.CurrentTarget or upgradeState.LastStatus or "-") or "-"
+
+    local cosmicUpgradeState = getModuleState(moduleByKey.CosmicUpgrade)
+    if cosmicUpgradeState then
+        infoLabels.CosmicUpgradeExtra.Text = string.format(
+            "%s | %s/%s concluidos",
+            tostring(cosmicUpgradeState.CurrentTarget or cosmicUpgradeState.LastStatus or "-"),
+            tostring(cosmicUpgradeState.CompletedTargets or 0),
+            tostring(cosmicUpgradeState.TotalTargets or 0)
+        )
+    else
+        infoLabels.CosmicUpgradeExtra.Text = "-"
+    end
 
     local okCodes, codesController = ensureCodesController()
     local codesState = okCodes and type(codesController) == "table" and codesController:GetState() or nil
@@ -1946,6 +2027,12 @@ for _, definition in ipairs(moduleDefinitions) do
                 toggleModuleByDefinition(definition)
             end)
         end
+    end
+
+    if modulePageButtons[definition.Key] then
+        bind(modulePageButtons[definition.Key].MouseButton1Click, function()
+            toggleModuleByDefinition(definition)
+        end)
     end
 end
 
