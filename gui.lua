@@ -256,28 +256,6 @@ local function isManualOnly(definition)
     return type(definition) == "table" and definition.ManualOnly == true
 end
 
-local function disableStartupUpgradeModules()
-    local targetKeys = {
-        "Upgrade",
-        "CosmicUpgrade",
-    }
-
-    for _, key in ipairs(targetKeys) do
-        local definition = moduleByKey[key]
-        if definition and definition.ModuleName then
-            local module = Batata.Modules[definition.ModuleName]
-            if module and type(module.SetEnabled) == "function" then
-                module:SetEnabled(false)
-            else
-                local ok, controller = safeEnsure(definition)
-                if ok and type(controller.SetEnabled) == "function" then
-                    controller:SetEnabled(false)
-                end
-            end
-        end
-    end
-end
-
 local function cloneBooleanMap(source)
     local copy = {}
     if type(source) ~= "table" then
@@ -459,8 +437,6 @@ local function applySavedStartupConfig()
 
     pausedSnapshot = nil
     scriptPaused = false
-    disableStartupUpgradeModules()
-
     if #failedModules > 0 then
         infoLabels.SummaryStatus.Text = "alguns modulos falharam"
         infoLabels.SummaryModules.Text = table.concat(failedModules, ", ")
@@ -1489,6 +1465,8 @@ local effectOptions = {
     { Id = "ClickMultiplier", Label = "Click Mult" },
     { Id = "CostReduction", Label = "Cost Reduction" },
     { Id = "GoldenConversionBonus", Label = "Golden Conv" },
+    { Id = "MagicConversionBonus", Label = "Magic Conv" },
+    { Id = "CosmicConversionBonus", Label = "Cosmic Conv" },
 }
 
 pickerButtons.effect_any = createChoiceButton(geneticsEffectsPanel, 14, 30, 120, 20, "Sem bonus")
@@ -1606,8 +1584,6 @@ end
 
 setStartupModules = function()
     setAllModules(true)
-    disableStartupUpgradeModules()
-
     pausedSnapshot = nil
     scriptPaused = false
 end
