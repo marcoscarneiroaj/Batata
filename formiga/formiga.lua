@@ -131,6 +131,7 @@ local COMBAT_FOREST_MIN = 1
 local COMBAT_FOREST_MAX = 3
 local COMBAT_DIFFICULTIES = { "Easy", "Hard", "Demonic", "Impossible" }
 local COMBAT_SKIP_TOKEN = "BattleSkip5"
+local SHOP_SCROLL_STEP = 260
 local REINCARNATION_SKILL_PRIORITY = {
     "PerClick",
     "PerClick",
@@ -526,6 +527,74 @@ local function toggleRuneSetEnabled(runeSetId)
     end
 
     state.RuneSetEnabled[runeSetId] = not currentlyEnabled
+end
+
+local function hasNamedAncestor(instance, ancestorName)
+    local current = instance and instance.Parent
+    while current do
+        if current.Name == ancestorName then
+            return true
+        end
+        current = current.Parent
+    end
+    return false
+end
+
+local function isGuiTreeVisible(instance)
+    local current = instance
+    while current do
+        if current:IsA("GuiObject") and current.Visible == false then
+            return false
+        end
+        current = current.Parent
+    end
+    return true
+end
+
+local function findVisibleShopScrollingFrame()
+    local mainUi = playerGui:FindFirstChild("MainUI", true)
+    if not mainUi then
+        return nil
+    end
+
+    local bestFrame
+    local bestScore = -math.huge
+
+    for _, descendant in ipairs(mainUi:GetDescendants()) do
+        if descendant:IsA("ScrollingFrame") and isGuiTreeVisible(descendant) then
+            local score = 0
+            if hasNamedAncestor(descendant, "ShopFrame") then
+                score += 1000000
+            end
+            if hasNamedAncestor(descendant, "TopFrame") then
+                score += 500000
+            end
+            score += descendant.AbsoluteSize.X * descendant.AbsoluteSize.Y
+
+            if score > bestScore then
+                bestScore = score
+                bestFrame = descendant
+            end
+        end
+    end
+
+    return bestFrame
+end
+
+local function scrollShopFrame(deltaY)
+    local scrollingFrame = findVisibleShopScrollingFrame()
+    if not scrollingFrame then
+        return false, "loja nao encontrada"
+    end
+
+    local currentPosition = scrollingFrame.CanvasPosition
+    local windowHeight = scrollingFrame.AbsoluteSize.Y
+    local canvasHeight = scrollingFrame.AbsoluteCanvasSize.Y
+    local maxY = math.max(0, canvasHeight - windowHeight)
+    local targetY = math.clamp((currentPosition and currentPosition.Y or 0) + (tonumber(deltaY) or 0), 0, maxY)
+
+    scrollingFrame.CanvasPosition = Vector2.new(currentPosition and currentPosition.X or 0, targetY)
+    return true, string.format("loja y=%d/%d", targetY, maxY)
 end
 
 local function getCombatMaxForest(worldIndex)
@@ -2207,6 +2276,34 @@ makeCorner(openButton, 14)
 makeStroke(openButton, Color3.fromRGB(223, 162, 82), 0.2, 1.1)
 state.OpenButton = openButton
 
+local shopScrollUpButton = createText(screenGui, {
+    Button = true,
+    Position = UDim2.new(1, -78, 0.5, -8),
+    Size = UDim2.new(0, 60, 0, 28),
+    Text = "Loja ^",
+    Font = Enum.Font.GothamBold,
+    TextSize = 11,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    BackgroundTransparency = 0,
+    BackgroundColor3 = Color3.fromRGB(84, 72, 56),
+})
+makeCorner(shopScrollUpButton, 10)
+makeStroke(shopScrollUpButton, Color3.fromRGB(223, 162, 82), 0.3, 1)
+
+local shopScrollDownButton = createText(screenGui, {
+    Button = true,
+    Position = UDim2.new(1, -78, 0.5, 24),
+    Size = UDim2.new(0, 60, 0, 28),
+    Text = "Loja v",
+    Font = Enum.Font.GothamBold,
+    TextSize = 11,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    BackgroundTransparency = 0,
+    BackgroundColor3 = Color3.fromRGB(84, 72, 56),
+})
+makeCorner(shopScrollDownButton, 10)
+makeStroke(shopScrollDownButton, Color3.fromRGB(223, 162, 82), 0.3, 1)
+
 local function refreshSummary()
     local enabledCount = 0
     local availableCount = 0
@@ -2555,6 +2652,18 @@ bind(disableAllButton.MouseButton1Click, stopAllEvents)
 bind(openButton.MouseButton1Click, function()
     setVisible(true)
 end)
+bind(shopScrollUpButton.MouseButton1Click, function()
+    local ok, result = scrollShopFrame(-SHOP_SCROLL_STEP)
+    if state.DetailsLabel then
+        state.DetailsLabel.Text = ok and ("Scroll loja: " .. tostring(result)) or ("Scroll loja falhou: " .. tostring(result))
+    end
+end)
+bind(shopScrollDownButton.MouseButton1Click, function()
+    local ok, result = scrollShopFrame(SHOP_SCROLL_STEP)
+    if state.DetailsLabel then
+        state.DetailsLabel.Text = ok and ("Scroll loja: " .. tostring(result)) or ("Scroll loja falhou: " .. tostring(result))
+    end
+end)
 bind(minimizeButton.MouseButton1Click, function()
     setVisible(false)
 end)
@@ -2658,7 +2767,7 @@ function state:Stop()
 end
 
 print("[FormigaAutomation] GUI carregada")
-print("[FormigaAutomation] Delete minimiza/restaura")
+print("[FormigaAutomation] Delete minimiza/restaura | Loja ^/v rola a shop")
 print("[FormigaAutomation] Abas: Automacao e Lutas")
 print("[FormigaAutomation] C = click | B = hit combate | F = luta 1x1 | G = mob loop | H = BattleSkip5 | U = upgrade all | I = geradores | P = cartas | O = up runas | N = auto runas | J = ascensao | K = reenc | L = up reenc | M = mina | R = boss | T = hit boss")
 print("[FormigaAutomation] Remotes mapeados do log: AscensionEvent, ReincarnationEvent, MineEvent, RaidEvent, ShopRestock")
